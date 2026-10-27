@@ -1,0 +1,67 @@
+[
+  {
+    "id": "kindle_flame",
+    "name": "Kindle Flame",
+    "level": 0,
+    "school": "evocation",
+    "casting_time": "1 action",
+    "range": "60 feet",
+    "components": "V, S",
+    "duration": "Instantaneous",
+    "description": "Hurl a spark of fire at a creature or object within range.",
+    "attack": true,
+    "effects": [
+      {
+        "kind": "damage",
+        "dice": "1d8",
+        "damage_type": "fire",
+        "dice_tiers": [
+          {
+            "min_level": 5,
+            "dice": "2d8"
+          },
+          {
+            "min_level": 11,
+            "dice": "3d8"
+          },
+          {
+            "min_level": 17,
+            "dice": "4d8"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "scorching_burst",
+    "name": "Scorching Burst",
+    "level": 1,
+    "school": "evocation",
+    "casting_time": "1 action",
+    "range": "Self (10-foot burst)",
+    "components": "V, S",
+    "duration": "Instantaneous",
+    "description": "A ring of heat bursts outward from you.",
+    "save": "dex",
+    "save_effect": "half damage on a successful save",
+    "effects": [
+      {
+        "kind": "damage",
+        "dice": "2d6",
+        "damage_type": "fire",
+        "upcast_dice": "1d6"
+      }
+    ]
+  },
+  {
+    "id": "smoldering_veil",
+    "name": "Smoldering Veil",
+    "level": 2,
+    "school": "abjuration",
+    "casting_time": "1 action",
+    "range": "Self",
+    "components": "V, S",
+    "duration": "1 minute",
+    "description": "A haze of embers surrounds you and warms the air."
+  }
+]

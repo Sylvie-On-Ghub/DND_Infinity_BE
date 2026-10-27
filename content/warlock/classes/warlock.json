@@ -1,0 +1,158 @@
+{
+  "id": "warlock",
+  "name": "Warlock",
+  "hit_die": 8,
+  "starting_grants": {
+    "saves": [
+      "wis",
+      "cha"
+    ],
+    "armour_profs": [
+      "light"
+    ],
+    "weapon_profs": [
+      "simple"
+    ]
+  },
+  "starting_choices": [
+    {
+      "id": "skills",
+      "prompt": "Choose two skills",
+      "kind": "pick",
+      "count": 2,
+      "filter": {
+        "type": "skill",
+        "allowed": [
+          "arcana",
+          "deception",
+          "history",
+          "intimidation",
+          "investigation",
+          "nature",
+          "religion"
+        ]
+      }
+    }
+  ],
+  "multiclass_prereq": [
+    {
+      "description": "Charisma 13",
+      "target": "ability.cha",
+      "min": 13
+    }
+  ],
+  "multiclass_grants": {
+    "armour_profs": [
+      "light"
+    ],
+    "weapon_profs": [
+      "simple"
+    ]
+  },
+  "levels": [
+    [
+      "pact_magic",
+      "eldritch_invocations_1"
+    ],
+    [
+      "eldritch_invocations_2"
+    ],
+    [],
+    [
+      "warlock_asi_4"
+    ]
+  ],
+  "subclass_level": 3,
+  "subclasses": [
+    {
+      "id": "archfey",
+      "name": "The Archfey",
+      "levels": [
+        [],
+        [],
+        [
+          "steps_of_the_fey"
+        ]
+      ],
+      "expanded_spells": [
+        "faerie_fire",
+        "sleep",
+        "calm_emotions",
+        "phantasmal_force"
+      ]
+    },
+    {
+      "id": "fiend",
+      "name": "The Fiend",
+      "levels": [
+        [],
+        [],
+        [
+          "dark_ones_blessing"
+        ]
+      ]
+    },
+    {
+      "id": "great_old_one",
+      "name": "The Great Old One",
+      "levels": [
+        [],
+        [],
+        [
+          "awakened_mind"
+        ]
+      ]
+    }
+  ],
+  "spellcasting": {
+    "ability": "cha",
+    "divisor": 0,
+    "pact": true,
+    "prep": "known",
+    "spell_list_id": "warlock",
+    "cantrips_known": [
+      2,
+      2,
+      2,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4
+    ],
+    "spells_known": [
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      10,
+      11,
+      11,
+      12,
+      12,
+      13,
+      13,
+      14,
+      14,
+      15,
+      15
+    ]
+  }
+}

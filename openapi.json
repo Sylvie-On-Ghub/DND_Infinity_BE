@@ -1,0 +1,4514 @@
+{
+  "components": {
+    "schemas": {
+      "ACBreakdown": {
+        "properties": {
+          "bonus": {
+            "type": "integer"
+          },
+          "formula": {
+            "type": "string"
+          },
+          "formula_id": {
+            "type": "string"
+          },
+          "formula_value": {
+            "type": "integer"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/ACOption"
+            },
+            "type": "array"
+          },
+          "overridden": {
+            "type": "boolean"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ACFormula": {
+        "properties": {
+          "formula": {
+            "$ref": "#/components/schemas/Formula"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "no_armour": {
+            "type": "boolean"
+          },
+          "no_shield": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "ACOption": {
+        "properties": {
+          "eligible": {
+            "type": "boolean"
+          },
+          "from_spell": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "value": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "AbilityScore": {
+        "properties": {
+          "save_proficient": {
+            "type": "boolean"
+          },
+          "score": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "AbilityView": {
+        "properties": {
+          "mod": {
+            "type": "integer"
+          },
+          "save_bonus": {
+            "type": "integer"
+          },
+          "save_proficient": {
+            "type": "boolean"
+          },
+          "score": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "Acknowledgement": {
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "AcknowledgementRequest": {
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Action": {
+        "properties": {
+          "attack": {
+            "$ref": "#/components/schemas/AttackDetails"
+          },
+          "description": {
+            "type": "string"
+          },
+          "duration": {
+            "type": "string"
+          },
+          "feature_id": {
+            "description": "On the sheet: the feature that granted this action, matching features[].feature_id. Absent for item actions. Ignored in content.",
+            "type": "string"
+          },
+          "is_attack": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "resource_id": {
+            "description": "On the sheet: the granting feature's limited-use resource, matching resources[].feature_id. Usually the same as feature_id; a resource attached to a feature's spells is keyed feature:\u003cid\u003e. Absent when there is none. Ignored in content.",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "action",
+              "bonus_action",
+              "reaction",
+              "free",
+              "other"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ActionResponse": {
+        "properties": {
+          "entry_id": {
+            "type": "string"
+          },
+          "removed": {
+            "type": "boolean"
+          },
+          "sheet": {
+            "$ref": "#/components/schemas/Sheet"
+          }
+        },
+        "type": "object"
+      },
+      "AddItemRequest": {
+        "properties": {
+          "container": {
+            "type": "string"
+          },
+          "custom": {
+            "$ref": "#/components/schemas/Item"
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "new_stack": {
+            "type": "boolean"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "AttackDetails": {
+        "properties": {
+          "ability": {
+            "enum": [
+              "str",
+              "dex",
+              "con",
+              "int",
+              "wis",
+              "cha"
+            ],
+            "type": "string"
+          },
+          "damage_dice": {
+            "type": "string"
+          },
+          "damage_type": {
+            "type": "string"
+          },
+          "flat_damage": {
+            "type": "integer"
+          },
+          "properties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "range_long": {
+            "type": "integer"
+          },
+          "range_normal": {
+            "type": "integer"
+          },
+          "ranged": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "AttackView": {
+        "properties": {
+          "ability": {
+            "enum": [
+              "str",
+              "dex",
+              "con",
+              "int",
+              "wis",
+              "cha"
+            ],
+            "type": "string"
+          },
+          "advantage": {
+            "type": "boolean"
+          },
+          "attack_riders": {
+            "items": {
+              "$ref": "#/components/schemas/Rider"
+            },
+            "type": "array"
+          },
+          "damage_bonus": {
+            "type": "integer"
+          },
+          "damage_dice": {
+            "type": "string"
+          },
+          "damage_riders": {
+            "items": {
+              "$ref": "#/components/schemas/Rider"
+            },
+            "type": "array"
+          },
+          "damage_type": {
+            "type": "string"
+          },
+          "disadvantage": {
+            "type": "boolean"
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "proficient": {
+            "type": "boolean"
+          },
+          "properties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "range_long": {
+            "type": "integer"
+          },
+          "range_normal": {
+            "type": "integer"
+          },
+          "to_hit": {
+            "type": "integer"
+          },
+          "versatile_dice": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "CarryView": {
+        "properties": {
+          "capacity": {
+            "type": "integer"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "push_drag_lift": {
+            "type": "integer"
+          },
+          "state": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "weight": {
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "Character": {
+        "description": "A character's stored state: choices made and things that change in play. Everything derived (AC, bonuses, attacks) is on the Sheet.",
+        "properties": {
+          "abilities": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AbilityScore"
+            },
+            "type": "object"
+          },
+          "ac_formula_override": {
+            "type": "string"
+          },
+          "acknowledgements": {
+            "description": "Warnings the user has marked as intentional, matched by key.",
+            "items": {
+              "$ref": "#/components/schemas/Acknowledgement"
+            },
+            "type": "array"
+          },
+          "armour_profs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "background_id": {
+            "description": "A feature tagged background. List them at /api/content/backgrounds and set this with PATCH.",
+            "type": "string"
+          },
+          "classes": {
+            "description": "One entry per class, in the order taken. The first is the character's starting class.",
+            "items": {
+              "$ref": "#/components/schemas/ClassLevel"
+            },
+            "type": "array"
+          },
+          "coins": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Currency id to amount. Negative means owed.",
+            "type": "object"
+          },
+          "companion_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "concentrating": {
+            "type": "string"
+          },
+          "conditions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "current_hp": {
+            "type": "integer"
+          },
+          "death_saves": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "details": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Details"
+              }
+            ],
+            "description": "Descriptive free text: alignment, appearance, personality and so on. The rules engine never reads it. A PATCH can change one field, e.g. {\"details\":{\"faith\":\"Mielikki\"}}."
+          },
+          "exhaustion": {
+            "type": "integer"
+          },
+          "feature_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "hit_dice_used": {
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "inspiration": {
+            "type": "integer"
+          },
+          "inventory": {
+            "items": {
+              "$ref": "#/components/schemas/InventoryItem"
+            },
+            "type": "array"
+          },
+          "languages": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "modifiers": {
+            "description": "Ad hoc modifiers on this character, applied on top of those from features and items.",
+            "items": {
+              "$ref": "#/components/schemas/Modifier"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "organisation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "pact_slots_used": {
+            "type": "integer"
+          },
+          "portrait_url": {
+            "description": "A link to an image for the character, http or https. The server stores the link only; the browser loads the image. Clear it with null in a PATCH.",
+            "type": "string"
+          },
+          "race_id": {
+            "description": "A feature tagged race. List them at /api/content/races and set this with PATCH.",
+            "type": "string"
+          },
+          "resource_used": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Feature id to uses spent.",
+            "type": "object"
+          },
+          "selections": {
+            "description": "Choices made on features. Change them with the selections endpoints.",
+            "items": {
+              "$ref": "#/components/schemas/Selection"
+            },
+            "type": "array"
+          },
+          "skill_ability": {
+            "additionalProperties": {
+              "enum": [
+                "str",
+                "dex",
+                "con",
+                "int",
+                "wis",
+                "cha"
+              ],
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "skills": {
+            "additionalProperties": {
+              "enum": [
+                "none",
+                "half",
+                "trained",
+                "expert"
+              ],
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "spell_slots_used": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Spell level to slots spent.",
+            "type": "object"
+          },
+          "spellbooks": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SpellState"
+            },
+            "description": "Spell choices per source id, for example class:wizard.",
+            "type": "object"
+          },
+          "temp_hp": {
+            "type": "integer"
+          },
+          "tools": {
+            "additionalProperties": {
+              "enum": [
+                "none",
+                "half",
+                "trained",
+                "expert"
+              ],
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "weapon_profs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "CharacterSummary": {
+        "properties": {
+          "class_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "error": {
+            "description": "Set when the stored data couldn't be read.",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "level": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "portrait_url": {
+            "description": "The character's portrait link, if set.",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Choice": {
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "filter": {
+            "$ref": "#/components/schemas/PoolFilter"
+          },
+          "grant_level": {
+            "enum": [
+              "none",
+              "half",
+              "trained",
+              "expert"
+            ],
+            "type": "string"
+          },
+          "group": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "pick",
+              "allocate"
+            ],
+            "type": "string"
+          },
+          "max_per_option": {
+            "type": "integer"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/Option"
+            },
+            "type": "array"
+          },
+          "points": {
+            "type": "integer"
+          },
+          "prompt": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Class": {
+        "properties": {
+          "hit_die": {
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "levels": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "max_level": {
+            "type": "integer"
+          },
+          "multiclass_grants": {
+            "$ref": "#/components/schemas/Grants"
+          },
+          "multiclass_prereq": {
+            "items": {
+              "$ref": "#/components/schemas/Prerequisite"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "spellcasting": {
+            "$ref": "#/components/schemas/SpellcastingDef"
+          },
+          "starting_choices": {
+            "items": {
+              "$ref": "#/components/schemas/Choice"
+            },
+            "type": "array"
+          },
+          "starting_grants": {
+            "$ref": "#/components/schemas/Grants"
+          },
+          "subclass_level": {
+            "type": "integer"
+          },
+          "subclasses": {
+            "items": {
+              "$ref": "#/components/schemas/Subclass"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ClassLevel": {
+        "properties": {
+          "class_id": {
+            "type": "string"
+          },
+          "level": {
+            "type": "integer"
+          },
+          "rolled_hp": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "subclass_id": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "CoinView": {
+        "properties": {
+          "abbrev": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "CoinsAction": {
+        "properties": {
+          "convert": {
+            "$ref": "#/components/schemas/ConvertAction"
+          },
+          "gain": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "pay": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "spend": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "ConditionsAction": {
+        "properties": {
+          "add": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "exhaustion": {
+            "type": "integer"
+          },
+          "remove": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ContainerDef": {
+        "properties": {
+          "capacity": {
+            "type": "number"
+          },
+          "ignores_contents_weight": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "ContentOverview": {
+        "properties": {
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "errors": {
+            "type": "integer"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/Issue"
+            },
+            "type": "array"
+          },
+          "warnings": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ContentSummary": {
+        "properties": {
+          "cost": {
+            "$ref": "#/components/schemas/Price"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "armour",
+              "shield",
+              "weapon",
+              "other"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "weight": {
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "ConvertAction": {
+        "properties": {
+          "amount": {
+            "type": "integer"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "CurrencyDef": {
+        "properties": {
+          "abbrev": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "Details": {
+        "properties": {
+          "age": {
+            "type": "string"
+          },
+          "alignment": {
+            "type": "string"
+          },
+          "appearance": {
+            "type": "string"
+          },
+          "bonds": {
+            "type": "string"
+          },
+          "eyes": {
+            "type": "string"
+          },
+          "faith": {
+            "type": "string"
+          },
+          "flaws": {
+            "type": "string"
+          },
+          "gender": {
+            "type": "string"
+          },
+          "hair": {
+            "type": "string"
+          },
+          "height": {
+            "type": "string"
+          },
+          "ideals": {
+            "type": "string"
+          },
+          "personality_traits": {
+            "type": "string"
+          },
+          "size": {
+            "type": "string"
+          },
+          "skin": {
+            "type": "string"
+          },
+          "weight": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "DiceTier": {
+        "properties": {
+          "dice": {
+            "type": "string"
+          },
+          "min_level": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "EligibleOption": {
+        "properties": {
+          "eligible": {
+            "description": "False when the character doesn't qualify. Frontends decide whether to hide or grey out the option.",
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "option_id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "EntryPatch": {
+        "properties": {
+          "ability_override": {
+            "type": "string"
+          },
+          "attuned": {
+            "type": "boolean"
+          },
+          "container": {
+            "type": "string"
+          },
+          "custom": {
+            "$ref": "#/components/schemas/Item"
+          },
+          "equipped": {
+            "type": "boolean"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "proficient": {
+            "type": "boolean"
+          },
+          "stashed": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "ErrorDetail": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorDetail"
+          }
+        },
+        "type": "object"
+      },
+      "Feature": {
+        "properties": {
+          "ac_formulas": {
+            "items": {
+              "$ref": "#/components/schemas/ACFormula"
+            },
+            "type": "array"
+          },
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/Action"
+            },
+            "type": "array"
+          },
+          "choices": {
+            "items": {
+              "$ref": "#/components/schemas/Choice"
+            },
+            "type": "array"
+          },
+          "description": {
+            "type": "string"
+          },
+          "grants": {
+            "$ref": "#/components/schemas/Grants"
+          },
+          "id": {
+            "type": "string"
+          },
+          "level_gained": {
+            "type": "integer"
+          },
+          "modifiers": {
+            "items": {
+              "$ref": "#/components/schemas/Modifier"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "class",
+              "race",
+              "background",
+              "feat",
+              "item",
+              "other"
+            ],
+            "type": "string"
+          },
+          "prerequisites": {
+            "items": {
+              "$ref": "#/components/schemas/Prerequisite"
+            },
+            "type": "array"
+          },
+          "repeatable": {
+            "type": "boolean"
+          },
+          "resource": {
+            "$ref": "#/components/schemas/Resource"
+          },
+          "scale_by": {
+            "type": "string"
+          },
+          "source_id": {
+            "type": "string"
+          },
+          "spells": {
+            "$ref": "#/components/schemas/SpellGrant"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tiers": {
+            "items": {
+              "$ref": "#/components/schemas/Tier"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "FeatureView": {
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "feature_id": {
+            "description": "The instance id, as used by resources, selections and actions. A repeatable feat taken twice has two ids.",
+            "type": "string"
+          },
+          "granted_by": {
+            "description": "The feature whose grant or choice added this one, for example the ASI feature a feat was picked from. Absent for top-level features.",
+            "type": "string"
+          },
+          "level": {
+            "description": "The class level it was gained at. Absent for features that don't come from a class.",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "resource_id": {
+            "description": "Its limited-use resource, matching resources[].feature_id. Absent when it has none.",
+            "type": "string"
+          },
+          "source": {
+            "description": "The feature's own origin, or else the class, race or background it was reached through. other when neither says.",
+            "enum": [
+              "class",
+              "race",
+              "background",
+              "feat",
+              "item",
+              "other"
+            ],
+            "type": "string"
+          },
+          "source_id": {
+            "description": "The class, race or background it belongs to. A feat with no source of its own gives its own id.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Formula": {
+        "properties": {
+          "base": {
+            "type": "integer"
+          },
+          "terms": {
+            "items": {
+              "$ref": "#/components/schemas/Term"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "Grants": {
+        "properties": {
+          "armour_profs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "feature_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "languages": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "saves": {
+            "items": {
+              "enum": [
+                "str",
+                "dex",
+                "con",
+                "int",
+                "wis",
+                "cha"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "skills": {
+            "additionalProperties": {
+              "enum": [
+                "none",
+                "half",
+                "trained",
+                "expert"
+              ],
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "tools": {
+            "additionalProperties": {
+              "enum": [
+                "none",
+                "half",
+                "trained",
+                "expert"
+              ],
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "weapon_profs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "HPAction": {
+        "properties": {
+          "damage": {
+            "type": "integer"
+          },
+          "heal": {
+            "type": "integer"
+          },
+          "set": {
+            "type": "integer"
+          },
+          "temp": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "HPChoice": {
+        "properties": {
+          "method": {
+            "type": "string"
+          },
+          "value": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "InventoryItem": {
+        "properties": {
+          "ability_override": {
+            "enum": [
+              "str",
+              "dex",
+              "con",
+              "int",
+              "wis",
+              "cha"
+            ],
+            "type": "string"
+          },
+          "attuned": {
+            "type": "boolean"
+          },
+          "container": {
+            "description": "The id of the entry this one is stored in.",
+            "type": "string"
+          },
+          "custom": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Item"
+              }
+            ],
+            "description": "A one-off item defined inline, used instead of item_id when set."
+          },
+          "equipped": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "proficient": {
+            "description": "Weapons: proficient with this one weapon regardless of weapon_profs, for example a Pact of the Blade weapon. Pair it with ability_override cha.",
+            "type": "boolean"
+          },
+          "quantity": {
+            "type": "integer"
+          },
+          "stashed": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "InventoryView": {
+        "properties": {
+          "attuned": {
+            "type": "boolean"
+          },
+          "container": {
+            "description": "The id of the entry this one is stored in. Empty at the top level.",
+            "type": "string"
+          },
+          "container_info": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ContainerDef"
+              }
+            ],
+            "description": "Present when the entry is a container, even an empty one. capacity is the weight it holds (0 or absent = no limit); ignores_contents_weight means its contents add nothing to carried weight (Bag of Holding)."
+          },
+          "contents": {
+            "description": "Containers only: total weight of everything stored inside, including nested containers, whether or not it counts toward carried weight. Absent means 0. Compare with container_info.capacity.",
+            "type": "number"
+          },
+          "cost": {
+            "$ref": "#/components/schemas/Price"
+          },
+          "counted": {
+            "type": "boolean"
+          },
+          "custom": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": "string"
+          },
+          "entry_id": {
+            "type": "string"
+          },
+          "equipped": {
+            "type": "boolean"
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "armour",
+              "shield",
+              "weapon",
+              "other"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer"
+          },
+          "rarity": {
+            "type": "string"
+          },
+          "requires_attunement": {
+            "type": "boolean"
+          },
+          "stashed": {
+            "type": "boolean"
+          },
+          "unknown": {
+            "type": "boolean"
+          },
+          "weight": {
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "Issue": {
+        "properties": {
+          "file": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "pack": {
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "error",
+              "warning"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Item": {
+        "properties": {
+          "ac_formula": {
+            "$ref": "#/components/schemas/ACFormula"
+          },
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/Action"
+            },
+            "type": "array"
+          },
+          "container": {
+            "$ref": "#/components/schemas/ContainerDef"
+          },
+          "cost": {
+            "$ref": "#/components/schemas/Price"
+          },
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "armour",
+              "shield",
+              "weapon",
+              "other"
+            ],
+            "type": "string"
+          },
+          "modifiers": {
+            "items": {
+              "$ref": "#/components/schemas/Modifier"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "rarity": {
+            "type": "string"
+          },
+          "requires_attunement": {
+            "type": "boolean"
+          },
+          "spells": {
+            "$ref": "#/components/schemas/SpellGrant"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "weapon": {
+            "$ref": "#/components/schemas/WeaponStats"
+          },
+          "weight": {
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "LevelUpRequest": {
+        "properties": {
+          "class_id": {
+            "type": "string"
+          },
+          "hp": {
+            "$ref": "#/components/schemas/HPChoice"
+          }
+        },
+        "type": "object"
+      },
+      "Modifier": {
+        "properties": {
+          "allow_stack": {
+            "type": "boolean"
+          },
+          "condition": {
+            "type": "string"
+          },
+          "dice": {
+            "description": "Makes this a dice rider (for example 1d6 Sneak Attack), shown on attacks rather than added into numbers.",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "add",
+              "set",
+              "min",
+              "multiply",
+              "advantage",
+              "disadvantage",
+              "note"
+            ],
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "source_id": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "value": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "MoveRequest": {
+        "properties": {
+          "container": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "Option": {
+        "properties": {
+          "grants": {
+            "$ref": "#/components/schemas/Grants"
+          },
+          "id": {
+            "type": "string"
+          },
+          "modifiers": {
+            "items": {
+              "$ref": "#/components/schemas/Modifier"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "PactRow": {
+        "properties": {
+          "level": {
+            "type": "integer"
+          },
+          "slots": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "PendingChoice": {
+        "properties": {
+          "choice_id": {
+            "type": "string"
+          },
+          "feature_id": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "remaining": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "PoolFilter": {
+        "properties": {
+          "allowed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tag": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Prerequisite": {
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "min": {
+            "type": "integer"
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Price": {
+        "properties": {
+          "amount": {
+            "type": "integer"
+          },
+          "currency": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "QuantityRequest": {
+        "properties": {
+          "delta": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "Resource": {
+        "properties": {
+          "max": {
+            "type": "integer"
+          },
+          "max_ability": {
+            "enum": [
+              "str",
+              "dex",
+              "con",
+              "int",
+              "wis",
+              "cha"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "recharge": {
+            "enum": [
+              "short_rest",
+              "long_rest",
+              "dawn",
+              "none"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ResourceAction": {
+        "properties": {
+          "restore": {
+            "type": "integer"
+          },
+          "set": {
+            "type": "integer"
+          },
+          "spend": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ResourceView": {
+        "properties": {
+          "feature_id": {
+            "type": "string"
+          },
+          "max": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "recharge": {
+            "enum": [
+              "short_rest",
+              "long_rest",
+              "dawn",
+              "none"
+            ],
+            "type": "string"
+          },
+          "remaining": {
+            "type": "integer"
+          },
+          "used": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "RestRequest": {
+        "properties": {
+          "type": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Rider": {
+        "properties": {
+          "condition": {
+            "type": "string"
+          },
+          "dice": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Ruleset": {
+        "properties": {
+          "base_ac": {
+            "$ref": "#/components/schemas/ACFormula"
+          },
+          "carry_per_strength": {
+            "type": "integer"
+          },
+          "coins_per_weight": {
+            "type": "integer"
+          },
+          "currencies": {
+            "items": {
+              "$ref": "#/components/schemas/CurrencyDef"
+            },
+            "type": "array"
+          },
+          "encumbrance": {
+            "type": "string"
+          },
+          "max_attuned": {
+            "type": "integer"
+          },
+          "max_inspiration": {
+            "type": "integer"
+          },
+          "pact_table": {
+            "items": {
+              "$ref": "#/components/schemas/PactRow"
+            },
+            "type": "array"
+          },
+          "slot_table": {
+            "items": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "unarmed": {
+            "$ref": "#/components/schemas/WeaponStats"
+          },
+          "weight_unit": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Selection": {
+        "properties": {
+          "allocated": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "choice_id": {
+            "type": "string"
+          },
+          "feature_id": {
+            "type": "string"
+          },
+          "picked": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "Sense": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "range": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "Sheet": {
+        "description": "Everything the rules engine computes for a character. Never stored; recomputed on every request.",
+        "properties": {
+          "abilities": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AbilityView"
+            },
+            "type": "object"
+          },
+          "ac": {
+            "type": "integer"
+          },
+          "ac_detail": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ACBreakdown"
+              }
+            ],
+            "description": "Which AC formula was used, and every alternative with whether it was eligible."
+          },
+          "actions": {
+            "description": "Actions granted by features and equipped items. Those from a feature carry its feature_id and, if it has limited uses, a resource_id matching resources[].feature_id.",
+            "items": {
+              "$ref": "#/components/schemas/Action"
+            },
+            "type": "array"
+          },
+          "armour_profs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "attacks": {
+            "description": "Computed attacks for equipped weapons, feature-granted attacks, and an unarmed strike.",
+            "items": {
+              "$ref": "#/components/schemas/AttackView"
+            },
+            "type": "array"
+          },
+          "carry": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CarryView"
+              }
+            ],
+            "description": "Carried weight against capacity, and the encumbrance state."
+          },
+          "caster_level": {
+            "description": "Combined caster level for multiclass slot tables. Pact casters don't count.",
+            "type": "integer"
+          },
+          "features": {
+            "description": "Every feature the character has, from classes, subclasses, race, background, feats and choices, in the order they resolved. The race and background themselves are listed too.",
+            "items": {
+              "$ref": "#/components/schemas/FeatureView"
+            },
+            "type": "array"
+          },
+          "immunities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "initiative": {
+            "type": "integer"
+          },
+          "inventory": {
+            "description": "Resolved inventory entries with names, weights, costs and containers.",
+            "items": {
+              "$ref": "#/components/schemas/InventoryView"
+            },
+            "type": "array"
+          },
+          "languages": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "level": {
+            "type": "integer"
+          },
+          "max_hp": {
+            "type": "integer"
+          },
+          "notes": {
+            "description": "Situational modifiers, advantage and disadvantage, and reminders that don't change a number.",
+            "items": {
+              "$ref": "#/components/schemas/Modifier"
+            },
+            "type": "array"
+          },
+          "pact_slots": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SlotView"
+              }
+            ],
+            "description": "Pact magic slots. Absent when the character has none."
+          },
+          "pending_choices": {
+            "description": "Choices the character is entitled to but hasn't made. Drives level-up flows. Fill them in with the selections endpoint.",
+            "items": {
+              "$ref": "#/components/schemas/PendingChoice"
+            },
+            "type": "array"
+          },
+          "proficiency_bonus": {
+            "type": "integer"
+          },
+          "resistances": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "resources": {
+            "description": "Limited-use feature resources with uses spent.",
+            "items": {
+              "$ref": "#/components/schemas/ResourceView"
+            },
+            "type": "array"
+          },
+          "senses": {
+            "items": {
+              "$ref": "#/components/schemas/Sense"
+            },
+            "type": "array"
+          },
+          "skills": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SkillView"
+            },
+            "type": "object"
+          },
+          "speeds": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "spell_slots": {
+            "description": "Shared spell slots. Pact slots are separate.",
+            "items": {
+              "$ref": "#/components/schemas/SlotView"
+            },
+            "type": "array"
+          },
+          "spellcasting": {
+            "description": "One entry per spell source: classes, plus features and items that grant spells.",
+            "items": {
+              "$ref": "#/components/schemas/SpellSourceView"
+            },
+            "type": "array"
+          },
+          "tools": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ToolView"
+            },
+            "type": "object"
+          },
+          "vulnerabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "wallet": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WalletView"
+              }
+            ],
+            "description": "Coins by denomination and their total value in base units."
+          },
+          "warnings": {
+            "description": "Rules problems found in the character. The API never rejects these: show them, and let the user acknowledge ones that are intentional.",
+            "items": {
+              "$ref": "#/components/schemas/Warning"
+            },
+            "type": "array"
+          },
+          "weapon_profs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "SkillDef": {
+        "properties": {
+          "default_ability": {
+            "enum": [
+              "str",
+              "dex",
+              "con",
+              "int",
+              "wis",
+              "cha"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "SkillView": {
+        "properties": {
+          "ability": {
+            "enum": [
+              "str",
+              "dex",
+              "con",
+              "int",
+              "wis",
+              "cha"
+            ],
+            "type": "string"
+          },
+          "advantage": {
+            "type": "boolean"
+          },
+          "bonus": {
+            "type": "integer"
+          },
+          "disadvantage": {
+            "type": "boolean"
+          },
+          "level": {
+            "enum": [
+              "none",
+              "half",
+              "trained",
+              "expert"
+            ],
+            "type": "string"
+          },
+          "passive": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "SlotAction": {
+        "properties": {
+          "level": {
+            "type": "integer"
+          },
+          "pact": {
+            "type": "boolean"
+          },
+          "restore": {
+            "type": "integer"
+          },
+          "spend": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "SlotView": {
+        "properties": {
+          "level": {
+            "type": "integer"
+          },
+          "max": {
+            "type": "integer"
+          },
+          "remaining": {
+            "type": "integer"
+          },
+          "used": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "Spell": {
+        "properties": {
+          "ac_formula": {
+            "$ref": "#/components/schemas/ACFormula"
+          },
+          "attack": {
+            "type": "boolean"
+          },
+          "casting_time": {
+            "type": "string"
+          },
+          "components": {
+            "type": "string"
+          },
+          "concentration": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": "string"
+          },
+          "duration": {
+            "type": "string"
+          },
+          "effects": {
+            "items": {
+              "$ref": "#/components/schemas/SpellEffect"
+            },
+            "type": "array"
+          },
+          "higher_levels": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "level": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "range": {
+            "type": "string"
+          },
+          "ritual": {
+            "type": "boolean"
+          },
+          "save": {
+            "enum": [
+              "str",
+              "dex",
+              "con",
+              "int",
+              "wis",
+              "cha"
+            ],
+            "type": "string"
+          },
+          "save_effect": {
+            "type": "string"
+          },
+          "school": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "SpellEffect": {
+        "properties": {
+          "add_ability_mod": {
+            "type": "boolean"
+          },
+          "damage_type": {
+            "type": "string"
+          },
+          "dice": {
+            "type": "string"
+          },
+          "dice_tiers": {
+            "items": {
+              "$ref": "#/components/schemas/DiceTier"
+            },
+            "type": "array"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "upcast_dice": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "SpellEffectView": {
+        "properties": {
+          "bonus": {
+            "type": "integer"
+          },
+          "damage_type": {
+            "type": "string"
+          },
+          "dice": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "riders": {
+            "items": {
+              "$ref": "#/components/schemas/Rider"
+            },
+            "type": "array"
+          },
+          "upcast": {
+            "items": {
+              "$ref": "#/components/schemas/UpcastEntry"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "SpellGrant": {
+        "properties": {
+          "ability": {
+            "enum": [
+              "str",
+              "dex",
+              "con",
+              "int",
+              "wis",
+              "cha"
+            ],
+            "type": "string"
+          },
+          "resource": {
+            "$ref": "#/components/schemas/Resource"
+          },
+          "spell_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "SpellList": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "spell_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "SpellSourceView": {
+        "properties": {
+          "ability": {
+            "enum": [
+              "str",
+              "dex",
+              "con",
+              "int",
+              "wis",
+              "cha"
+            ],
+            "type": "string"
+          },
+          "attack_bonus": {
+            "type": "integer"
+          },
+          "cantrips": {
+            "items": {
+              "$ref": "#/components/schemas/SpellView"
+            },
+            "type": "array"
+          },
+          "cantrips_allowed": {
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "class",
+              "feature",
+              "item"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "prep": {
+            "type": "string"
+          },
+          "save_dc": {
+            "type": "integer"
+          },
+          "spells": {
+            "items": {
+              "$ref": "#/components/schemas/SpellView"
+            },
+            "type": "array"
+          },
+          "spells_allowed": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "SpellState": {
+        "properties": {
+          "book": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "cantrips": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "known": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "prepared": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "SpellView": {
+        "properties": {
+          "attack": {
+            "type": "boolean"
+          },
+          "attack_bonus": {
+            "type": "integer"
+          },
+          "casting_time": {
+            "type": "string"
+          },
+          "components": {
+            "type": "string"
+          },
+          "concentration": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": "string"
+          },
+          "duration": {
+            "type": "string"
+          },
+          "effects": {
+            "items": {
+              "$ref": "#/components/schemas/SpellEffectView"
+            },
+            "type": "array"
+          },
+          "higher_levels": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "level": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "prepared": {
+            "type": "boolean"
+          },
+          "range": {
+            "type": "string"
+          },
+          "ritual": {
+            "type": "boolean"
+          },
+          "save_ability": {
+            "enum": [
+              "str",
+              "dex",
+              "con",
+              "int",
+              "wis",
+              "cha"
+            ],
+            "type": "string"
+          },
+          "save_dc": {
+            "type": "integer"
+          },
+          "save_effect": {
+            "type": "string"
+          },
+          "school": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "SpellcastingDef": {
+        "properties": {
+          "ability": {
+            "enum": [
+              "str",
+              "dex",
+              "con",
+              "int",
+              "wis",
+              "cha"
+            ],
+            "type": "string"
+          },
+          "cantrips_known": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "divisor": {
+            "type": "integer"
+          },
+          "pact": {
+            "type": "boolean"
+          },
+          "prep": {
+            "type": "string"
+          },
+          "prepared_formula": {
+            "$ref": "#/components/schemas/Formula"
+          },
+          "ritual": {
+            "type": "boolean"
+          },
+          "round_up": {
+            "type": "boolean"
+          },
+          "spell_list_id": {
+            "type": "string"
+          },
+          "spells_known": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "start_level": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "Subclass": {
+        "properties": {
+          "expanded_spells": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "levels": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Term": {
+        "properties": {
+          "div": {
+            "type": "integer"
+          },
+          "max": {
+            "type": "integer"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Tier": {
+        "properties": {
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/Action"
+            },
+            "type": "array"
+          },
+          "grants": {
+            "$ref": "#/components/schemas/Grants"
+          },
+          "min_level": {
+            "type": "integer"
+          },
+          "modifiers": {
+            "items": {
+              "$ref": "#/components/schemas/Modifier"
+            },
+            "type": "array"
+          },
+          "resource": {
+            "$ref": "#/components/schemas/Resource"
+          },
+          "spells": {
+            "$ref": "#/components/schemas/SpellGrant"
+          }
+        },
+        "type": "object"
+      },
+      "ToolView": {
+        "properties": {
+          "level": {
+            "enum": [
+              "none",
+              "half",
+              "trained",
+              "expert"
+            ],
+            "type": "string"
+          },
+          "prof_bonus": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "UpcastEntry": {
+        "properties": {
+          "dice": {
+            "type": "string"
+          },
+          "slot_level": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "WalletView": {
+        "properties": {
+          "coins": {
+            "items": {
+              "$ref": "#/components/schemas/CoinView"
+            },
+            "type": "array"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "Warning": {
+        "properties": {
+          "ack_note": {
+            "type": "string"
+          },
+          "acknowledged": {
+            "description": "True if the character has an acknowledgement matching this key.",
+            "type": "boolean"
+          },
+          "choice_id": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "feature_id": {
+            "type": "string"
+          },
+          "key": {
+            "description": "A stable identifier. Use it to acknowledge the warning.",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "WeaponStats": {
+        "properties": {
+          "attack": {
+            "$ref": "#/components/schemas/AttackDetails"
+          },
+          "category": {
+            "type": "string"
+          },
+          "magic_bonus": {
+            "type": "integer"
+          },
+          "versatile_dice": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "A rules engine and storage service for D\u0026D-style characters, built to be driven by any frontend.\n\n## The core ideas\n\n- **Character vs sheet.** You store a *character*: the choices made and the things that change in play. The server computes the *sheet* from it (AC, bonuses, attacks, spell DCs, carrying weight). You never calculate rules yourself; fetch the sheet.\n- **Everything is permissive.** Rules problems (a skill outside the allowed list, spending a slot you don't have, a prerequisite not met) are never errors. The request succeeds and the sheet carries a `warnings` entry. Show warnings, and let the user acknowledge ones that are intentional (homebrew, DM rulings).\n- **Pending choices drive wizards.** `sheet.pending_choices` lists every choice the character is entitled to but hasn't made (starting skills, a subclass, an ability score improvement, spells to pick). For each, ask `choice-options` for what's allowed, then record the pick with `selections`.\n- **Feats and ability score improvements.** At a feat level the character makes one choice: a feat. Ability Score Improvement is one of the feats, and taking it opens a second pending choice for the two points. That second choice's `feature_id` looks like `ability_score_improvement@rogue_asi_4:feat`, which names the pick it belongs to, so a feat taken twice has two separate sets of points. Always use a `feature_id` exactly as `pending_choices` gives it.\n- **Backgrounds and races.** Both are features marked with a tag (`background`, `race`), chosen by setting `background_id` or `race_id` on the character with a PATCH. List the choices at `/api/content/backgrounds` and `/api/content/races`. A background's own picks, such as its ability score increase and any feat it grants, appear in `pending_choices`. So does choosing a race or a background at all (`feature_id` `character`, `choice_id` `race` or `background`) when the loaded content offers any. Ability score increases come from the background; a race does not change ability scores.\n- **Actions return the sheet.** Every play action responds with the updated sheet, so the screen can redraw without a second request.\n- **Content comes from packs.** Class, item, spell and feature ids come from `/api/content`. Homebrew packs layer over the core one, so the id lists can differ between servers.\n- **Strict bodies.** Unknown fields in a request body are a 400, so a typo can't silently drop data.\n\n## Building a character\n\n1. `POST /api/characters` with a name and ability scores.\n2. `POST /api/characters/{id}/level-up` once per level.\n3. `GET /api/characters/{id}/sheet` and read `pending_choices`.\n4. For each pending choice, `GET .../choice-options` then `POST .../selections`.\n5. Pick spells by patching `spellbooks` on the character, for example `{\"spellbooks\": {\"class:wizard\": {\"cantrips\": [\"fire_bolt\"]}}}`.\n6. Add gear with `POST .../inventory` and money with `POST .../coins`.\n7. `POST .../rest` with `long` to start at full health.\n\n## Errors\n\nEvery error has the shape `{\"error\": {\"code\": \"...\", \"message\": \"...\"}}` with codes `bad_request`, `invalid_id`, `not_found`, `already_exists`, `bad_conversion`, `method_not_allowed`, `not_supported` and `internal`.\n\n## Notes\n\n- There is no authentication; it is meant to run locally or on a trusted network.\n- Browsers on another origin need the server started with `-cors-origin`.\n- Actions on one character are serialised, so concurrent play actions don't overwrite each other. `PUT` and `PATCH` are last-write-wins.",
+    "title": "DnD Character API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.0.3",
+  "paths": {
+    "/api/characters": {
+      "get": {
+        "description": "Id, name, level and classes for every saved character, sorted by name. A character whose file can't be read is included with `error` set.",
+        "operationId": "listCharacters",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CharacterSummary"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "The characters."
+          }
+        },
+        "summary": "List characters",
+        "tags": [
+          "Characters"
+        ]
+      },
+      "post": {
+        "description": "Everything is optional. If `id` is omitted the server generates one. Build the rest up with level-ups, selections and the other actions.",
+        "operationId": "createCharacter",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "id": "mira",
+                "name": "Mira",
+                "abilities": {
+                  "dex": {
+                    "score": 16
+                  }
+                },
+                "classes": [
+                  {
+                    "class_id": "rogue",
+                    "level": 1,
+                    "rolled_hp": [
+                      8
+                    ]
+                  }
+                ]
+              },
+              "schema": {
+                "$ref": "#/components/schemas/Character"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Character"
+                }
+              }
+            },
+            "description": "The saved character. The Location header has its URL."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request: malformed JSON, an unknown field, an invalid id, or a request that can't be carried out. Rules problems are never errors; they come back as warnings on the sheet."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A character with that id already exists."
+          }
+        },
+        "summary": "Create a character",
+        "tags": [
+          "Characters"
+        ]
+      }
+    },
+    "/api/characters/{id}": {
+      "delete": {
+        "operationId": "deleteCharacter",
+        "parameters": [
+          {
+            "description": "A character id (letters, digits, - and _), or a content id on the content routes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request: malformed JSON, an unknown field, an invalid id, or a request that can't be carried out. Rules problems are never errors; they come back as warnings on the sheet."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found: no such character, inventory entry, feature or content."
+          }
+        },
+        "summary": "Delete a character",
+        "tags": [
+          "Characters"
+        ]
+      },
+      "get": {
+        "description": "The stored state: choices and things that change in play. For computed values (AC, bonuses, attacks) use the sheet.",
+        "operationId": "getCharacter",
+        "parameters": [
+          {
+            "description": "A character id (letters, digits, - and _), or a content id on the content routes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Character"
+                }
+              }
+            },
+            "description": "The character."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request: malformed JSON, an unknown field, an invalid id, or a request that can't be carried out. Rules problems are never errors; they come back as warnings on the sheet."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found: no such character, inventory entry, feature or content."
+          }
+        },
+        "summary": "Get a character",
+        "tags": [
+          "Characters"
+        ]
+      },
+      "patch": {
+        "description": "JSON merge patch (RFC 7386): send only what changes. Objects merge, arrays replace whole, and `null` clears a field. The result must still be a valid character, so a misspelt field is a 400. A character's id can't be changed.",
+        "operationId": "patchCharacter",
+        "parameters": [
+          {
+            "description": "A character id (letters, digits, - and _), or a content id on the content routes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "inspiration": 2,
+                "spellbooks": {
+                  "class:wizard": {
+                    "prepared": [
+                      "shield"
+                    ]
+                  }
+                }
+              },
+              "schema": {
+                "$ref": "#/components/schemas/Character"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Character"
+                }
+              }
+            },
+            "description": "The patched character."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request: malformed JSON, an unknown field, an invalid id, or a request that can't be carried out. Rules problems are never errors; they come back as warnings on the sheet."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found: no such character, inventory entry, feature or content."
+          }
+        },
+        "summary": "Edit some fields of a character",
+        "tags": [
+          "Characters"
+        ]
+      },
+      "put": {
+        "description": "Replaces the whole character. The character must already exist, and the body's `id` (if given) must match the URL.",
+        "operationId": "replaceCharacter",
+        "parameters": [
+          {
+            "description": "A character id (letters, digits, - and _), or a content id on the content routes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Character"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Character"
+                }
+              }
+            },
+            "description": "The saved character."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request: malformed JSON, an unknown field, an invalid id, or a request that can't be carried out. Rules problems are never errors; they come back as warnings on the sheet."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found: no such character, inventory entry, feature or content."
+          }
+        },
+        "summary": "Replace a character",
+        "tags": [
+          "Characters"
+        ]
+      }
+    },
+    "/api/characters/{id}/acknowledgements": {
+      "delete": {
+        "operationId": "removeAcknowledgement",
+        "parameters": [
+          {
+            "description": "A character id (letters, digits, - and _), or a content id on the content routes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The warning key (URL-encode it: keys contain colons).",
+            "in": "query",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "The updated sheet."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request: malformed JSON, an unknown field, an invalid id, or a request that can't be carried out. Rules problems are never errors; they come back as warnings on the sheet."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found: no such character, inventory entry, feature or content."
+          }
+        },
+        "summary": "Remove an acknowledgement",
+        "tags": [
+          "Choices"
+        ]
+      },
+      "post": {
+        "description": "Marks one sheet warning as intentional (\"the DM allowed it\"). Use the warning's `key`. The warning stays on the sheet with `acknowledged: true`; hiding it is up to the frontend. If the offending value changes, the key changes and the acknowledgement lapses.",
+        "operationId": "acknowledgeWarning",
+        "parameters": [
+          {
+            "description": "A character id (letters, digits, - and _), or a content id on the content routes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "key": "over_cap:::5",
+                "note": "DM approved"
+              },
+              "schema": {
+                "$ref": "#/components/schemas/AcknowledgementRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "The updated sheet."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request: malformed JSON, an unknown field, an invalid id, or a request that can't be carried out. Rules problems are never errors; they come back as warnings on the sheet."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found: no such character, inventory entry, feature or content."
+          }
+        },
+        "summary": "Acknowledge a warning",
+        "tags": [
+          "Choices"
+        ]
+      }
+    },
+    "/api/characters/{id}/choice-options": {
+      "get": {
+        "description": "Each option says whether this character qualifies and, if not, why. The API only reports: a frontend decides whether to hide ineligible options or show them greyed out. Take `feature_id` and `choice_id` from the sheet's `pending_choices`.",
+        "operationId": "choiceOptions",
+        "parameters": [
+          {
+            "description": "A character id (letters, digits, - and _), or a content id on the content routes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The feature holding the choice.",
+            "in": "query",
+            "name": "feature_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The choice's id.",
+            "in": "query",
+            "name": "choice_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EligibleOption"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "The options."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request: malformed JSON, an unknown field, an invalid id, or a request that can't be carried out. Rules problems are never errors; they come back as warnings on the sheet."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found: no such character, inventory entry, feature or content."
+          }
+        },
+        "summary": "List the options for a choice",
+        "tags": [
+          "Choices"
+        ]
+      }
+    },
+    "/api/characters/{id}/coins": {
+      "post": {
+        "description": "Send exactly one of `gain`, `spend`, `pay` or `convert`. Spending is exact: the named coins leave, and a shortfall leaves a negative balance with a warning rather than failing. `pay` is a price paid by value from whatever coins are held, largest first, with change: `{\"pay\":{\"gp\":15}}` from 10 gp and 100 sp leaves 50 sp. If the coins held are worth less than the price, `pay` fails with 400 code `cant_afford` and nothing changes. `convert` makes change (for example 1 pp to 10 gp) and fails with 400 if the result isn't a whole number of the target coin. Currencies come from /api/ruleset.",
+        "operationId": "changeCoins",
+        "parameters": [
+          {
+            "description": "A character id (letters, digits, - and _), or a content id on the content routes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "gain": {
+                  "gp": 50
+                }
+              },
+              "schema": {
+                "$ref": "#/components/schemas/CoinsAction"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "The updated sheet."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request: malformed JSON, an unknown field, an invalid id, or a request that can't be carried out. Rules problems are never errors; they come back as warnings on the sheet."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found: no such character, inventory entry, feature or content."
+          }
+        },
+        "summary": "Gain, spend, pay or convert coins",
+        "tags": [
+          "Coins"
+        ]
+      }
+    },
+    "/api/characters/{id}/conditions": {
+      "post": {
+        "description": "All fields optional. Poisoned, frightened and blinded have built-in effects on the sheet; other names are recorded as-is.",
+        "operationId": "changeConditions",
+        "parameters": [
+          {
+            "description": "A character id (letters, digits, - and _), or a content id on the content routes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "add": [
+                  "poisoned"
+                ],
+                "remove": [
+                  "blinded"
+                ],
+                "exhaustion": 1
+              },
+              "schema": {
+                "$ref": "#/components/schemas/ConditionsAction"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "The updated sheet."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request: malformed JSON, an unknown field, an invalid id, or a request that can't be carried out. Rules problems are never errors; they come back as warnings on the sheet."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found: no such character, inventory entry, feature or content."
+          }
+        },
+        "summary": "Add or remove conditions",
+        "tags": [
+          "Play actions"
+        ]
+      }
+    },
+    "/api/characters/{id}/hp": {
+      "post": {
+        "description": "Send exactly one of `damage`, `heal`, `temp` or `set`. Damage hits temporary HP first and stops at 0. Healing stops at max HP (and never lowers HP), and healing from 0 clears death saves. `temp` replaces temp HP. `set` bypasses every rule.",
+        "operationId": "changeHP",
+        "parameters": [
+          {
+            "description": "A character id (letters, digits, - and _), or a content id on the content routes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "damage": 7
+              },
+              "schema": {
+                "$ref": "#/components/schemas/HPAction"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "The updated sheet."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request: malformed JSON, an unknown field, an invalid id, or a request that can't be carried out. Rules problems are never errors; they come back as warnings on the sheet."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found: no such character, inventory entry, feature or content."
+          }
+        },
+        "summary": "Damage, heal or set hit points",
+        "tags": [
+          "Play actions"
+        ]
+      }
+    },
+    "/api/characters/{id}/inventory": {
+      "post": {
+        "description": "Send either `item_id` (from /api/content/items) or an inline `custom` item for one-off loot. Quantity defaults to 1. A plain item merges into an existing stack of the same item in the same container unless `new_stack` is true. Returns the entry's id in `entry_id`.",
+        "operationId": "addItem",
+        "parameters": [
+          {
+            "description": "A character id (letters, digits, - and _), or a content id on the content routes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "item_id": "rope_hempen",
+                "quantity": 2
+              },
+              "schema": {
+                "$ref": "#/components/schemas/AddItemRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "The updated sheet and the entry id."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request: malformed JSON, an unknown field, an invalid id, or a request that can't be carried out. Rules problems are never errors; they come back as warnings on the sheet."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found: no such character, inventory entry, feature or content."
+          }
+        },
+        "summary": "Add an item",
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/characters/{id}/inventory/{entryId}": {
+      "delete": {
+        "description": "Anything stored inside it moves to the top level, unless `contents=delete`.",
+        "operationId": "removeEntry",
+        "parameters": [
+          {
+            "description": "A character id (letters, digits, - and _), or a content id on the content routes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "An inventory entry id, as returned when the item was added or in the sheet's inventory.",
+            "in": "path",
+            "name": "entryId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Set to `delete` to remove the entry's contents too.",
+            "in": "query",
+            "name": "contents",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "The updated sheet."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request: malformed JSON, an unknown field, an invalid id, or a request that can't be carried out. Rules problems are never errors; they come back as warnings on the sheet."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found: no such character, inventory entry, feature or content."
+          }
+        },
+        "summary": "Remove an entry",
+        "tags": [
+          "Inventory"
+        ]
+      },
+      "patch": {
+        "description": "Equip, attune, stash, move into a container, or add notes. Only the fields below can be patched. Equipping two suits of armour is allowed and shows as a warning. On a custom entry, `custom` is a merge patch onto its inline item: send only the item fields that change (`null` clears one). Sending `custom` for a library item is a 400.",
+        "operationId": "patchEntry",
+        "parameters": [
+          {
+            "description": "A character id (letters, digits, - and _), or a content id on the content routes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "An inventory entry id, as returned when the item was added or in the sheet's inventory.",
+            "in": "path",
+            "name": "entryId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "equipped": true,
+                "notes": "my pack",
+                "custom": {
+                  "weight": 2
+                }
+              },
+              "schema": {
+                "$ref": "#/components/schemas/EntryPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "The updated sheet."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request: malformed JSON, an unknown field, an invalid id, or a request that can't be carried out. Rules problems are never errors; they come back as warnings on the sheet."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found: no such character, inventory entry, feature or content."
+          }
+        },
+        "summary": "Change an entry's state",
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/characters/{id}/inventory/{entryId}/move": {
+      "post": {
+        "description": "`container` is another entry's id, or empty for the top level. With a `quantity` smaller than the stack, only that many move and a new entry is created for them. Putting something inside itself is a 400.",
+        "operationId": "moveEntry",
+        "parameters": [
+          {
+            "description": "A character id (letters, digits, - and _), or a content id on the content routes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "An inventory entry id, as returned when the item was added or in the sheet's inventory.",
+            "in": "path",
+            "name": "entryId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "container": "",
+                "quantity": 1
+              },
+              "schema": {
+                "$ref": "#/components/schemas/MoveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "The updated sheet and the id of the entry that moved."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request: malformed JSON, an unknown field, an invalid id, or a request that can't be carried out. Rules problems are never errors; they come back as warnings on the sheet."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found: no such character, inventory entry, feature or content."
+          }
+        },
+        "summary": "Move an entry into or out of a container",
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/characters/{id}/inventory/{entryId}/quantity": {
+      "post": {
+        "description": "Relative. An entry that reaches 0 is removed, and anything stored inside it moves to the top level.",
+        "operationId": "changeQuantity",
+        "parameters": [
+          {
+            "description": "A character id (letters, digits, - and _), or a content id on the content routes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "An inventory entry id, as returned when the item was added or in the sheet's inventory.",
+            "in": "path",
+            "name": "entryId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "delta": -1
+              },
+              "schema": {
+                "$ref": "#/components/schemas/QuantityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "The updated sheet; `removed` says whether the entry is gone."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request: malformed JSON, an unknown field, an invalid id, or a request that can't be carried out. Rules problems are never errors; they come back as warnings on the sheet."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found: no such character, inventory entry, feature or content."
+          }
+        },
+        "summary": "Change a stack's quantity",
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/characters/{id}/level-up": {
+      "post": {
+        "description": "Adds a level in `class_id` (adding the class at level 1 if the character doesn't have it) and records the hit points for it: `average` (default), `roll`, `max`, or `manual` with a `value`. A character's very first level always gets the maximum. Current HP is not changed. The returned sheet's `pending_choices` say what to ask the player next.",
+        "operationId": "levelUp",
+        "parameters": [
+          {
+            "description": "A character id (letters, digits, - and _), or a content id on the content routes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "class_id": "rogue",
+                "hp": {
+                  "method": "average"
+                }
+              },
+              "schema": {
+                "$ref": "#/components/schemas/LevelUpRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "The updated sheet."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request: malformed JSON, an unknown field, an invalid id, or a request that can't be carried out. Rules problems are never errors; they come back as warnings on the sheet."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found: no such character, inventory entry, feature or content."
+          }
+        },
+        "summary": "Add a level in a class",
+        "tags": [
+          "Play actions"
+        ]
+      }
+    },
+    "/api/characters/{id}/resources/{featureId}": {
+      "post": {
+        "description": "For uses of a feature, such as Rage or Arcane Recovery. Send exactly one of `spend`, `restore` or `set`.",
+        "operationId": "changeResource",
+        "parameters": [
+          {
+            "description": "A character id (letters, digits, - and _), or a content id on the content routes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The id of the feature (or item, for charges) whose resource is being changed, as in the sheet's resources.",
+            "in": "path",
+            "name": "featureId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "spend": 1
+              },
+              "schema": {
+                "$ref": "#/components/schemas/ResourceAction"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "The updated sheet."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request: malformed JSON, an unknown field, an invalid id, or a request that can't be carried out. Rules problems are never errors; they come back as warnings on the sheet."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found: no such character, inventory entry, feature or content."
+          }
+        },
+        "summary": "Spend or restore a limited-use resource",
+        "tags": [
+          "Play actions"
+        ]
+      }
+    },
+    "/api/characters/{id}/rest": {
+      "post": {
+        "description": "Short: pact slots and short-rest resources come back. Long: also HP to max, temp HP cleared, all spell slots back, long-rest and dawn resources back, half your hit dice back (at least 1), death saves cleared, concentration ends, exhaustion drops by 1. Spending hit dice during a short rest is not automated.",
+        "operationId": "rest",
+        "parameters": [
+          {
+            "description": "A character id (letters, digits, - and _), or a content id on the content routes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "type": "long"
+              },
+              "schema": {
+                "$ref": "#/components/schemas/RestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "The updated sheet."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request: malformed JSON, an unknown field, an invalid id, or a request that can't be carried out. Rules problems are never errors; they come back as warnings on the sheet."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found: no such character, inventory entry, feature or content."
+          }
+        },
+        "summary": "Take a short or long rest",
+        "tags": [
+          "Play actions"
+        ]
+      }
+    },
+    "/api/characters/{id}/selections": {
+      "delete": {
+        "operationId": "removeSelection",
+        "parameters": [
+          {
+            "description": "A character id (letters, digits, - and _), or a content id on the content routes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The feature holding the choice.",
+            "in": "query",
+            "name": "feature_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The choice's id.",
+            "in": "query",
+            "name": "choice_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "The updated sheet; `removed` says whether there was a selection to remove."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request: malformed JSON, an unknown field, an invalid id, or a request that can't be carried out. Rules problems are never errors; they come back as warnings on the sheet."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found: no such character, inventory entry, feature or content."
+          }
+        },
+        "summary": "Remove a choice",
+        "tags": [
+          "Choices"
+        ]
+      },
+      "post": {
+        "description": "Sets or replaces the selection for one feature and choice. Use `picked` for pick choices and `allocated` (option id to points) for allocate choices such as ability score improvements. Out-of-pool or over-count picks are accepted and show as warnings.",
+        "operationId": "setSelection",
+        "parameters": [
+          {
+            "description": "A character id (letters, digits, - and _), or a content id on the content routes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "feature_id": "rogue_expertise_1",
+                "choice_id": "expertise",
+                "picked": [
+                  "stealth",
+                  "sleight_of_hand"
+                ]
+              },
+              "schema": {
+                "$ref": "#/components/schemas/Selection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "The updated sheet."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request: malformed JSON, an unknown field, an invalid id, or a request that can't be carried out. Rules problems are never errors; they come back as warnings on the sheet."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found: no such character, inventory entry, feature or content."
+          }
+        },
+        "summary": "Make or change a choice",
+        "tags": [
+          "Choices"
+        ]
+      }
+    },
+    "/api/characters/{id}/sheet": {
+      "get": {
+        "description": "Everything the rules engine works out for the character: abilities, saves, skills, AC, HP, attacks, spells, inventory and carrying, plus `warnings` and `pending_choices`.",
+        "operationId": "getSheet",
+        "parameters": [
+          {
+            "description": "A character id (letters, digits, - and _), or a content id on the content routes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sheet"
+                }
+              }
+            },
+            "description": "The sheet."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request: malformed JSON, an unknown field, an invalid id, or a request that can't be carried out. Rules problems are never errors; they come back as warnings on the sheet."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found: no such character, inventory entry, feature or content."
+          }
+        },
+        "summary": "Get the computed sheet",
+        "tags": [
+          "Sheet"
+        ]
+      }
+    },
+    "/api/characters/{id}/spell-slots": {
+      "post": {
+        "description": "Relative to what is already used, so two frontends can't overwrite each other. Send `spend` or `restore` with a `level` (1-9), or `pact: true` for pact slots. Overspending is allowed and shows as a sheet warning.",
+        "operationId": "changeSpellSlots",
+        "parameters": [
+          {
+            "description": "A character id (letters, digits, - and _), or a content id on the content routes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "level": 3,
+                "spend": 1
+              },
+              "schema": {
+                "$ref": "#/components/schemas/SlotAction"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "The updated sheet."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request: malformed JSON, an unknown field, an invalid id, or a request that can't be carried out. Rules problems are never errors; they come back as warnings on the sheet."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found: no such character, inventory entry, feature or content."
+          }
+        },
+        "summary": "Spend or restore spell slots",
+        "tags": [
+          "Play actions"
+        ]
+      }
+    },
+    "/api/content": {
+      "get": {
+        "description": "How much content is loaded, plus every problem the loader found. Useful for homebrew authors.",
+        "operationId": "contentOverview",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentOverview"
+                }
+              }
+            },
+            "description": "Counts and issues."
+          }
+        },
+        "summary": "Content overview and problems",
+        "tags": [
+          "Content"
+        ]
+      }
+    },
+    "/api/content/reload": {
+      "post": {
+        "description": "Re-reads the content packs, so homebrew edits show up without restarting. If loading fails, the previous content stays in use.",
+        "operationId": "reloadContent",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentOverview"
+                }
+              }
+            },
+            "description": "Counts and issues for the new content."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected server error."
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not supported by this server's configuration."
+          }
+        },
+        "summary": "Reload content from disk",
+        "tags": [
+          "Content"
+        ]
+      }
+    },
+    "/api/content/{kind}": {
+      "get": {
+        "description": "`backgrounds` and `races` list the features tagged that way: the things a character can choose, not their individual traits.",
+        "operationId": "listContent",
+        "parameters": [
+          {
+            "description": "One of features, items, classes, spells, spell-lists, skills, backgrounds, races.",
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ContentSummary"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Ids and names; items also include kind, weight, cost and tags."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found: no such character, inventory entry, feature or content."
+          }
+        },
+        "summary": "List content of one kind",
+        "tags": [
+          "Content"
+        ]
+      }
+    },
+    "/api/content/{kind}/{id}": {
+      "get": {
+        "description": "The full definition, typed by `kind`: `classes` returns a Class, `features`, `backgrounds` and `races` a Feature, `items` an Item, `spells` a Spell, `spell-lists` a SpellList and `skills` a SkillDef.",
+        "operationId": "getContent",
+        "parameters": [
+          {
+            "description": "One of features, items, classes, spells, spell-lists, skills, backgrounds, races.",
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "A character id (letters, digits, - and _), or a content id on the content routes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/Class"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Feature"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Item"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Spell"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SpellList"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SkillDef"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "The definition."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found: no such character, inventory entry, feature or content."
+          }
+        },
+        "summary": "Get one content definition",
+        "tags": [
+          "Content"
+        ]
+      }
+    },
+    "/api/health": {
+      "get": {
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "The server is running."
+          }
+        },
+        "summary": "Health check",
+        "tags": [
+          "Server"
+        ]
+      }
+    },
+    "/api/ruleset": {
+      "get": {
+        "description": "Currencies, spell slot tables, the inspiration cap and other table-level settings, with defaults filled in.",
+        "operationId": "getRuleset",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ruleset"
+                }
+              }
+            },
+            "description": "The ruleset."
+          }
+        },
+        "summary": "Get the ruleset in force",
+        "tags": [
+          "Server"
+        ]
+      }
+    },
+    "/api/sheet-preview": {
+      "post": {
+        "description": "Send a full character and get its sheet back. Nothing is stored. Useful for builders that want a live preview while editing.",
+        "operationId": "previewSheet",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Character"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sheet"
+                }
+              }
+            },
+            "description": "The sheet."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request: malformed JSON, an unknown field, an invalid id, or a request that can't be carried out. Rules problems are never errors; they come back as warnings on the sheet."
+          }
+        },
+        "summary": "Compute a sheet without saving",
+        "tags": [
+          "Sheet"
+        ]
+      }
+    }
+  },
+  "servers": [
+    {
+      "description": "This server",
+      "url": "/"
+    }
+  ],
+  "tags": [
+    {
+      "description": "Create, read, update and delete characters.",
+      "name": "Characters"
+    },
+    {
+      "description": "The computed sheet, and a no-save preview.",
+      "name": "Sheet"
+    },
+    {
+      "description": "Things that happen at the table: damage, rests, slots, conditions, level-ups. Each returns the fresh sheet.",
+      "name": "Play actions"
+    },
+    {
+      "description": "Pending choices, their options, selections, and acknowledging warnings.",
+      "name": "Choices"
+    },
+    {
+      "description": "Items, containers and equipment.",
+      "name": "Inventory"
+    },
+    {
+      "description": "Gaining, spending, paying and converting currency.",
+      "name": "Coins"
+    },
+    {
+      "description": "The loaded classes, features, items, spells and skills, and reloading them.",
+      "name": "Content"
+    },
+    {
+      "description": "Ruleset and health.",
+      "name": "Server"
+    }
+  ]
+}

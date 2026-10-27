@@ -1,0 +1,201 @@
+[
+  {
+    "id": "ability_score_improvement",
+    "name": "Ability Score Improvement",
+    "origin": "feat",
+    "repeatable": true,
+    "description": "Raise ability scores by 2 in total, with no more than 2 in any one. It can be taken every time you gain a feat.",
+    "choices": [
+      {
+        "id": "scores",
+        "prompt": "Increase ability scores",
+        "kind": "allocate",
+        "points": 2,
+        "max_per_option": 2,
+        "options": [
+          {
+            "id": "str",
+            "name": "Strength",
+            "modifiers": [
+              {
+                "target": "ability.str",
+                "kind": "add",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "id": "dex",
+            "name": "Dexterity",
+            "modifiers": [
+              {
+                "target": "ability.dex",
+                "kind": "add",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "id": "con",
+            "name": "Constitution",
+            "modifiers": [
+              {
+                "target": "ability.con",
+                "kind": "add",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "id": "int",
+            "name": "Intelligence",
+            "modifiers": [
+              {
+                "target": "ability.int",
+                "kind": "add",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "id": "wis",
+            "name": "Wisdom",
+            "modifiers": [
+              {
+                "target": "ability.wis",
+                "kind": "add",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "id": "cha",
+            "name": "Charisma",
+            "modifiers": [
+              {
+                "target": "ability.cha",
+                "kind": "add",
+                "value": 1
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "alert",
+    "name": "Alert",
+    "origin": "feat",
+    "description": "You are hard to catch off guard.",
+    "modifiers": [
+      {
+        "target": "initiative",
+        "kind": "add",
+        "value": 5
+      }
+    ]
+  },
+  {
+    "id": "powerful_build",
+    "name": "Powerful Build",
+    "origin": "race",
+    "description": "You count as larger when working out what you can carry, push, drag or lift.",
+    "modifiers": [
+      {
+        "target": "carry_capacity",
+        "kind": "multiply",
+        "value": 2
+      }
+    ]
+  },
+  {
+    "id": "skilled",
+    "name": "Skilled",
+    "origin": "feat",
+    "repeatable": true,
+    "description": "Gain proficiency in three skills of your choice. It can be taken more than once.",
+    "choices": [
+      {
+        "id": "skills",
+        "prompt": "Choose three skills",
+        "kind": "pick",
+        "count": 3,
+        "filter": {
+          "type": "skill"
+        }
+      }
+    ]
+  },
+  {
+    "id": "watchful",
+    "name": "Watchful",
+    "origin": "feat",
+    "description": "You notice what others miss: a bonus to your passive Perception and Investigation.",
+    "modifiers": [
+      {
+        "target": "passive.perception",
+        "kind": "add",
+        "value": 5
+      },
+      {
+        "target": "passive.investigation",
+        "kind": "add",
+        "value": 5
+      }
+    ]
+  },
+  {
+    "id": "lucky",
+    "name": "Lucky",
+    "origin": "feat",
+    "description": "You have Luck Points equal to your proficiency bonus, regained on a long rest. Spend one when you make a D20 Test to give yourself advantage, or when a creature attacks you to give it disadvantage.",
+    "scale_by": "character",
+    "actions": [
+      {
+        "name": "Lucky",
+        "type": "free",
+        "description": "Spend 1 Luck Point: advantage on your D20 Test, or disadvantage on an attack roll against you."
+      }
+    ],
+    "resource": {
+      "name": "Luck Points",
+      "max": 2,
+      "recharge": "long_rest"
+    },
+    "tiers": [
+      {
+        "min_level": 5,
+        "resource": {
+          "name": "Luck Points",
+          "max": 3,
+          "recharge": "long_rest"
+        }
+      },
+      {
+        "min_level": 9,
+        "resource": {
+          "name": "Luck Points",
+          "max": 4,
+          "recharge": "long_rest"
+        }
+      },
+      {
+        "min_level": 13,
+        "resource": {
+          "name": "Luck Points",
+          "max": 5,
+          "recharge": "long_rest"
+        }
+      },
+      {
+        "min_level": 17,
+        "resource": {
+          "name": "Luck Points",
+          "max": 6,
+          "recharge": "long_rest"
+        }
+      }
+    ]
+  }
+]

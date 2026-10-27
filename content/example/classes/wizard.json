@@ -1,0 +1,118 @@
+{
+  "id": "wizard",
+  "name": "Wizard",
+  "hit_die": 6,
+  "starting_grants": {
+    "saves": [
+      "int",
+      "wis"
+    ],
+    "weapon_profs": [
+      "dagger",
+      "dart",
+      "sling",
+      "quarterstaff",
+      "light_crossbow"
+    ]
+  },
+  "starting_choices": [
+    {
+      "id": "skills",
+      "prompt": "Choose two skills",
+      "kind": "pick",
+      "count": 2,
+      "filter": {
+        "type": "skill",
+        "allowed": [
+          "arcana",
+          "history",
+          "insight",
+          "investigation",
+          "medicine",
+          "religion"
+        ]
+      }
+    }
+  ],
+  "multiclass_prereq": [
+    {
+      "description": "Intelligence 13",
+      "target": "ability.int",
+      "min": 13
+    }
+  ],
+  "levels": [
+    [
+      "arcane_recovery"
+    ],
+    [],
+    [],
+    [
+      "wizard_asi_4"
+    ],
+    [],
+    [],
+    [],
+    [
+      "wizard_asi_8"
+    ],
+    [],
+    [],
+    [],
+    [
+      "wizard_asi_12"
+    ],
+    [],
+    [],
+    [],
+    [
+      "wizard_asi_16"
+    ],
+    [],
+    [],
+    [
+      "wizard_asi_19"
+    ],
+    []
+  ],
+  "spellcasting": {
+    "ability": "int",
+    "divisor": 1,
+    "prep": "book",
+    "spell_list_id": "wizard",
+    "ritual": true,
+    "cantrips_known": [
+      3,
+      3,
+      3,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5
+    ],
+    "prepared_formula": {
+      "base": 0,
+      "terms": [
+        {
+          "source": "mod.int"
+        },
+        {
+          "source": "class_level.wizard"
+        }
+      ]
+    }
+  }
+}

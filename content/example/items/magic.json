@@ -1,0 +1,44 @@
+[
+  {
+    "id": "longsword_plus_1",
+    "name": "Longsword +1",
+    "kind": "weapon",
+    "weapon": {
+      "category": "martial",
+      "attack": {
+        "damage_dice": "1d8",
+        "damage_type": "slashing",
+        "range_normal": 5,
+        "properties": [
+          "versatile"
+        ]
+      },
+      "versatile_dice": "1d10",
+      "magic_bonus": 1
+    },
+    "weight": 3,
+    "rarity": "uncommon"
+  },
+  {
+    "id": "ring_of_protection",
+    "name": "Ring of Protection",
+    "kind": "other",
+    "requires_attunement": true,
+    "description": "A bonus to AC and to all saving throws while attuned.",
+    "modifiers": [
+      {
+        "target": "ac",
+        "kind": "add",
+        "value": 1,
+        "source_id": "ring_of_protection"
+      },
+      {
+        "target": "save.all",
+        "kind": "add",
+        "value": 1,
+        "source_id": "ring_of_protection"
+      }
+    ],
+    "rarity": "rare"
+  }
+]

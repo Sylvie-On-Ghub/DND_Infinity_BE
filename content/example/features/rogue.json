@@ -1,0 +1,297 @@
+[
+  {
+    "id": "sneak_attack",
+    "name": "Sneak Attack",
+    "origin": "class",
+    "source_id": "rogue",
+    "description": "Once per turn, add extra damage to a hit made with advantage or next to an ally of the target. Scales every two levels.",
+    "tiers": [
+      {
+        "min_level": 1,
+        "modifiers": [
+          {
+            "target": "damage.all",
+            "kind": "add",
+            "dice": "1d6",
+            "condition": "once per turn, with advantage or an ally next to the target"
+          }
+        ]
+      },
+      {
+        "min_level": 3,
+        "modifiers": [
+          {
+            "target": "damage.all",
+            "kind": "add",
+            "dice": "2d6",
+            "condition": "once per turn, with advantage or an ally next to the target"
+          }
+        ]
+      },
+      {
+        "min_level": 5,
+        "modifiers": [
+          {
+            "target": "damage.all",
+            "kind": "add",
+            "dice": "3d6",
+            "condition": "once per turn, with advantage or an ally next to the target"
+          }
+        ]
+      },
+      {
+        "min_level": 7,
+        "modifiers": [
+          {
+            "target": "damage.all",
+            "kind": "add",
+            "dice": "4d6",
+            "condition": "once per turn, with advantage or an ally next to the target"
+          }
+        ]
+      },
+      {
+        "min_level": 9,
+        "modifiers": [
+          {
+            "target": "damage.all",
+            "kind": "add",
+            "dice": "5d6",
+            "condition": "once per turn, with advantage or an ally next to the target"
+          }
+        ]
+      },
+      {
+        "min_level": 11,
+        "modifiers": [
+          {
+            "target": "damage.all",
+            "kind": "add",
+            "dice": "6d6",
+            "condition": "once per turn, with advantage or an ally next to the target"
+          }
+        ]
+      },
+      {
+        "min_level": 13,
+        "modifiers": [
+          {
+            "target": "damage.all",
+            "kind": "add",
+            "dice": "7d6",
+            "condition": "once per turn, with advantage or an ally next to the target"
+          }
+        ]
+      },
+      {
+        "min_level": 15,
+        "modifiers": [
+          {
+            "target": "damage.all",
+            "kind": "add",
+            "dice": "8d6",
+            "condition": "once per turn, with advantage or an ally next to the target"
+          }
+        ]
+      },
+      {
+        "min_level": 17,
+        "modifiers": [
+          {
+            "target": "damage.all",
+            "kind": "add",
+            "dice": "9d6",
+            "condition": "once per turn, with advantage or an ally next to the target"
+          }
+        ]
+      },
+      {
+        "min_level": 19,
+        "modifiers": [
+          {
+            "target": "damage.all",
+            "kind": "add",
+            "dice": "10d6",
+            "condition": "once per turn, with advantage or an ally next to the target"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "cunning_action",
+    "name": "Cunning Action",
+    "origin": "class",
+    "source_id": "rogue",
+    "description": "Dash, Disengage or Hide as a bonus action.",
+    "actions": [
+      {
+        "name": "Cunning Action",
+        "type": "bonus_action",
+        "is_attack": false,
+        "description": "Dash, Disengage or Hide."
+      }
+    ]
+  },
+  {
+    "id": "rogue_expertise_1",
+    "name": "Expertise",
+    "origin": "class",
+    "source_id": "rogue",
+    "description": "Choose two skills; your proficiency bonus is doubled for them.",
+    "choices": [
+      {
+        "id": "expertise",
+        "prompt": "Choose two skills for expertise",
+        "kind": "pick",
+        "count": 2,
+        "filter": {
+          "type": "skill"
+        },
+        "grant_level": "expert"
+      }
+    ]
+  },
+  {
+    "id": "rogue_expertise_6",
+    "name": "Expertise",
+    "origin": "class",
+    "source_id": "rogue",
+    "description": "Choose two skills; your proficiency bonus is doubled for them.",
+    "choices": [
+      {
+        "id": "expertise",
+        "prompt": "Choose two skills for expertise",
+        "kind": "pick",
+        "count": 2,
+        "filter": {
+          "type": "skill"
+        },
+        "grant_level": "expert"
+      }
+    ]
+  },
+  {
+    "id": "fast_hands",
+    "name": "Fast Hands",
+    "origin": "class",
+    "source_id": "rogue",
+    "description": "Use your bonus action for Sleight of Hand, thieves' tools, or Use an Object.",
+    "actions": [
+      {
+        "name": "Fast Hands",
+        "type": "bonus_action",
+        "is_attack": false,
+        "description": "Sleight of Hand check, use thieves' tools, or Use an Object."
+      }
+    ]
+  },
+  {
+    "id": "rogue_asi_4",
+    "name": "Ability Score Improvement",
+    "origin": "class",
+    "source_id": "rogue",
+    "description": "Take a feat. Ability Score Improvement is itself a feat, so choosing it raises ability scores by 2 in total, as the classic improvement does.",
+    "choices": [
+      {
+        "id": "feat",
+        "prompt": "Choose a feat (Ability Score Improvement is one of them)",
+        "kind": "pick",
+        "count": 1,
+        "filter": {
+          "type": "feat"
+        }
+      }
+    ]
+  },
+  {
+    "id": "rogue_asi_8",
+    "name": "Ability Score Improvement",
+    "origin": "class",
+    "source_id": "rogue",
+    "description": "Take a feat. Ability Score Improvement is itself a feat, so choosing it raises ability scores by 2 in total, as the classic improvement does.",
+    "choices": [
+      {
+        "id": "feat",
+        "prompt": "Choose a feat (Ability Score Improvement is one of them)",
+        "kind": "pick",
+        "count": 1,
+        "filter": {
+          "type": "feat"
+        }
+      }
+    ]
+  },
+  {
+    "id": "rogue_asi_10",
+    "name": "Ability Score Improvement",
+    "origin": "class",
+    "source_id": "rogue",
+    "description": "Take a feat. Ability Score Improvement is itself a feat, so choosing it raises ability scores by 2 in total, as the classic improvement does.",
+    "choices": [
+      {
+        "id": "feat",
+        "prompt": "Choose a feat (Ability Score Improvement is one of them)",
+        "kind": "pick",
+        "count": 1,
+        "filter": {
+          "type": "feat"
+        }
+      }
+    ]
+  },
+  {
+    "id": "rogue_asi_12",
+    "name": "Ability Score Improvement",
+    "origin": "class",
+    "source_id": "rogue",
+    "description": "Take a feat. Ability Score Improvement is itself a feat, so choosing it raises ability scores by 2 in total, as the classic improvement does.",
+    "choices": [
+      {
+        "id": "feat",
+        "prompt": "Choose a feat (Ability Score Improvement is one of them)",
+        "kind": "pick",
+        "count": 1,
+        "filter": {
+          "type": "feat"
+        }
+      }
+    ]
+  },
+  {
+    "id": "rogue_asi_16",
+    "name": "Ability Score Improvement",
+    "origin": "class",
+    "source_id": "rogue",
+    "description": "Take a feat. Ability Score Improvement is itself a feat, so choosing it raises ability scores by 2 in total, as the classic improvement does.",
+    "choices": [
+      {
+        "id": "feat",
+        "prompt": "Choose a feat (Ability Score Improvement is one of them)",
+        "kind": "pick",
+        "count": 1,
+        "filter": {
+          "type": "feat"
+        }
+      }
+    ]
+  },
+  {
+    "id": "rogue_asi_19",
+    "name": "Ability Score Improvement",
+    "origin": "class",
+    "source_id": "rogue",
+    "description": "Take a feat. Ability Score Improvement is itself a feat, so choosing it raises ability scores by 2 in total, as the classic improvement does.",
+    "choices": [
+      {
+        "id": "feat",
+        "prompt": "Choose a feat (Ability Score Improvement is one of them)",
+        "kind": "pick",
+        "count": 1,
+        "filter": {
+          "type": "feat"
+        }
+      }
+    ]
+  }
+]

@@ -1,0 +1,19 @@
+{
+  "id": "warlock",
+  "name": "Warlock",
+  "spell_ids": [
+    "eldritch_blast",
+    "chill_touch",
+    "minor_illusion",
+    "hex",
+    "armor_of_agathys",
+    "hellish_rebuke",
+    "charm_person",
+    "witch_bolt",
+    "darkness",
+    "hold_person",
+    "misty_step",
+    "mirror_image",
+    "shatter"
+  ]
+}

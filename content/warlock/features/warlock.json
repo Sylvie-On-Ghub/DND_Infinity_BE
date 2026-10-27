@@ -1,0 +1,308 @@
+[
+  {
+    "id": "pact_magic",
+    "name": "Pact Magic",
+    "origin": "class",
+    "source_id": "warlock",
+    "description": "Your spell slots are few, all of one level, and come back on a short or long rest."
+  },
+  {
+    "id": "eldritch_invocations_1",
+    "name": "Eldritch Invocations",
+    "origin": "class",
+    "source_id": "warlock",
+    "description": "You have unearthed Eldritch Invocations, pieces of forbidden knowledge that imbue you with an abiding magical ability or other lessons. Choose one invocation. You gain more at warlock levels 2, 5, 7, 9, 12, 15 and 18, each as its own feature with its own choice. When you gain a warlock level, you can replace one of your invocations with another you qualify for.",
+    "choices": [
+      {
+        "id": "invocations",
+        "prompt": "Choose an eldritch invocation",
+        "kind": "pick",
+        "count": 1,
+        "filter": {
+          "type": "feature_tag",
+          "tag": "eldritch_invocation"
+        }
+      }
+    ]
+  },
+  {
+    "id": "eldritch_invocations_2",
+    "name": "Eldritch Invocations",
+    "origin": "class",
+    "source_id": "warlock",
+    "description": "Choose two more eldritch invocations, for three in total.",
+    "choices": [
+      {
+        "id": "invocations",
+        "prompt": "Choose two more eldritch invocations",
+        "kind": "pick",
+        "count": 2,
+        "filter": {
+          "type": "feature_tag",
+          "tag": "eldritch_invocation"
+        }
+      }
+    ]
+  },
+  {
+    "id": "pact_of_the_chain",
+    "name": "Pact of the Chain",
+    "origin": "class",
+    "source_id": "warlock",
+    "description": "You learn the Find Familiar spell and can cast it as a Magic action without expending a spell slot. When you cast the spell, you choose one of the normal forms for your familiar or one of the following special forms: Imp, Pseudodragon, Quasit, Skeleton, Slaad Tadpole, Sphinx of Wonder, Sprite, or Venomous Snake. Additionally, when you take the Attack action, you can forgo one of your own attacks to allow your familiar to make one attack of its own with its Reaction.",
+    "spells": {
+      "spell_ids": [
+        "find_familiar"
+      ],
+      "ability": "cha"
+    },
+    "tags": [
+      "eldritch_invocation"
+    ]
+  },
+  {
+    "id": "pact_of_the_blade",
+    "name": "Pact of the Blade",
+    "origin": "class",
+    "source_id": "warlock",
+    "tags": [
+      "eldritch_invocation"
+    ],
+    "description": "As a Bonus Action, you can conjure a pact weapon in your hand (a Simple or Martial Melee weapon of your choice with which you bond) or create a bond with a magic weapon you touch; you can't bond with an Artifact or a sentient weapon. Until the bond ends, you have proficiency with the weapon, and you can use it as a Spellcasting Focus. Whenever you attack with the bonded weapon, you can use your Charisma modifier for the attack and damage rolls instead of Strength or Dexterity, and you can cause the weapon to deal Necrotic, Psychic, or Radiant damage or its normal damage type. The bond ends if you use this feature's Bonus Action again, if the weapon is more than 5 feet away from you for 1 minute or more, or if you die. A conjured weapon disappears when the bond ends.",
+    "actions": [
+      {
+        "name": "Conjure Pact Weapon",
+        "type": "bonus_action",
+        "is_attack": false,
+        "description": "Conjure a Simple or Martial Melee weapon in your hand, or bond with a magic weapon you touch. You're proficient with it and can use Charisma for its attack and damage rolls: set the weapon's ability override to cha. It can deal Necrotic, Psychic or Radiant damage instead of its normal type."
+      }
+    ]
+  },
+  {
+    "id": "pact_of_the_tome",
+    "name": "Pact of the Tome",
+    "origin": "class",
+    "source_id": "warlock",
+    "description": "Stitching together strands of shadow, you conjure forth a book in your hand at the end of a Short or Long Rest. This Book of Shadows contains eldritch magic that only you can access: when the book appears, choose three cantrips and two level 1 spells that have the Ritual tag, from any class's spell list. While the book is on your person, you have those spells prepared, and they function as warlock spells for you. You can use the book as a Spellcasting Focus. Add the chosen spells to your spellbook state yourself.",
+    "tags": [
+      "eldritch_invocation"
+    ]
+  },
+  {
+    "id": "agonizing_blast",
+    "name": "Agonizing Blast",
+    "origin": "class",
+    "source_id": "warlock",
+    "tags": [
+      "eldritch_invocation"
+    ],
+    "description": "Requires the eldritch blast cantrip. Add your Charisma modifier to the damage of each beam.",
+    "modifiers": [
+      {
+        "target": "damage.spell",
+        "kind": "note",
+        "note": "Agonizing Blast: add your Charisma modifier to each Eldritch Blast beam"
+      }
+    ],
+    "prerequisites": [
+      {
+        "description": "Level 2+ Warlock",
+        "target": "level",
+        "min": 2
+      }
+    ]
+  },
+  {
+    "id": "repelling_blast",
+    "name": "Repelling Blast",
+    "origin": "class",
+    "source_id": "warlock",
+    "tags": [
+      "eldritch_invocation"
+    ],
+    "description": "Requires the eldritch blast cantrip. A creature hit by a beam is pushed up to 10 feet away.",
+    "modifiers": [
+      {
+        "target": "damage.spell",
+        "kind": "note",
+        "note": "Repelling Blast: push a creature hit by Eldritch Blast up to 10 feet"
+      }
+    ],
+    "prerequisites": [
+      {
+        "description": "Level 2+ Warlock",
+        "target": "level",
+        "min": 2
+      }
+    ]
+  },
+  {
+    "id": "devils_sight",
+    "name": "Devil's Sight",
+    "origin": "class",
+    "source_id": "warlock",
+    "tags": [
+      "eldritch_invocation"
+    ],
+    "description": "You can see normally in darkness, magical and nonmagical, to a distance of 120 feet.",
+    "modifiers": [
+      {
+        "target": "sense.devils_sight",
+        "kind": "add",
+        "value": 120
+      }
+    ],
+    "prerequisites": [
+      {
+        "description": "Level 2+ Warlock",
+        "target": "level",
+        "min": 2
+      }
+    ]
+  },
+  {
+    "id": "armor_of_shadows",
+    "name": "Armor of Shadows",
+    "origin": "class",
+    "source_id": "warlock",
+    "tags": [
+      "eldritch_invocation"
+    ],
+    "description": "You can cast mage armor on yourself at will, without a spell slot or material components.",
+    "spells": {
+      "spell_ids": [
+        "mage_armor"
+      ],
+      "ability": "cha"
+    }
+  },
+  {
+    "id": "eldritch_sight",
+    "name": "Eldritch Sight",
+    "origin": "class",
+    "source_id": "warlock",
+    "tags": [
+      "eldritch_invocation"
+    ],
+    "description": "You can cast detect magic at will, without a spell slot.",
+    "spells": {
+      "spell_ids": [
+        "detect_magic"
+      ],
+      "ability": "cha"
+    }
+  },
+  {
+    "id": "mask_of_many_faces",
+    "name": "Mask of Many Faces",
+    "origin": "class",
+    "source_id": "warlock",
+    "tags": [
+      "eldritch_invocation"
+    ],
+    "description": "You can cast disguise self at will, without a spell slot.",
+    "spells": {
+      "spell_ids": [
+        "disguise_self"
+      ],
+      "ability": "cha"
+    },
+    "prerequisites": [
+      {
+        "description": "Level 2+ Warlock",
+        "target": "level",
+        "min": 2
+      }
+    ]
+  },
+  {
+    "id": "beguiling_influence",
+    "name": "Beguiling Influence",
+    "origin": "class",
+    "source_id": "warlock",
+    "tags": [
+      "eldritch_invocation"
+    ],
+    "description": "You gain proficiency in the Deception and Persuasion skills.",
+    "grants": {
+      "skills": {
+        "deception": "trained",
+        "persuasion": "trained"
+      }
+    }
+  },
+  {
+    "id": "dark_ones_blessing",
+    "name": "Dark One's Blessing",
+    "origin": "class",
+    "source_id": "warlock",
+    "description": "When you reduce a hostile creature to 0 hit points, you gain temporary hit points equal to your Charisma modifier plus your warlock level.",
+    "actions": [
+      {
+        "name": "Dark One's Blessing",
+        "type": "free",
+        "is_attack": false,
+        "description": "Gain temporary hit points: Charisma modifier + warlock level. Apply it with the temp hp action."
+      }
+    ]
+  },
+  {
+    "id": "awakened_mind",
+    "name": "Awakened Mind",
+    "origin": "class",
+    "source_id": "warlock",
+    "description": "You can communicate telepathically with any creature you can see within 30 feet."
+  },
+  {
+    "id": "warlock_asi_4",
+    "name": "Ability Score Improvement",
+    "origin": "class",
+    "source_id": "warlock",
+    "description": "Take a feat. Ability Score Improvement is itself a feat, so choosing it raises ability scores by 2 in total, as the classic improvement does.",
+    "choices": [
+      {
+        "id": "feat",
+        "prompt": "Choose a feat (Ability Score Improvement is one of them)",
+        "kind": "pick",
+        "count": 1,
+        "filter": {
+          "type": "feat"
+        }
+      }
+    ]
+  },
+  {
+    "id": "steps_of_the_fey",
+    "name": "Steps of the Fey",
+    "origin": "class",
+    "source_id": "warlock",
+    "description": "Your patron grants you the ability to move between the boundaries of the planes. You can cast Misty Step without expending a spell slot a number of times equal to your Charisma modifier (minimum of once), and you regain all expended uses when you finish a Long Rest. In addition, whenever you cast that spell, you can choose one of the following additional effects. Refreshing Step. Immediately after you teleport, you or one creature you can see within 10 feet of yourself gains 1d10 Temporary Hit Points. Taunting Step. Creatures within 5 feet of the space you left must succeed on a Wisdom saving throw against your spell save DC or have Disadvantage on attack rolls against creatures other than you until the start of your next turn.",
+    "spells": {
+      "spell_ids": [
+        "misty_step"
+      ],
+      "ability": "cha",
+      "resource": {
+        "name": "Steps of the Fey",
+        "max": 1,
+        "max_ability": "cha",
+        "recharge": "long_rest"
+      }
+    },
+    "actions": [
+      {
+        "name": "Refreshing Step",
+        "type": "free",
+        "is_attack": false,
+        "description": "When you cast Misty Step, immediately after you teleport, you or one creature you can see within 10 feet of you gains 1d10 temporary hit points."
+      },
+      {
+        "name": "Taunting Step",
+        "type": "free",
+        "is_attack": false,
+        "description": "When you cast Misty Step, creatures within 5 feet of the space you left make a Wisdom save against your spell save DC or have Disadvantage on attack rolls against creatures other than you until the start of your next turn.",
+        "duration": "Until start of your next turn"
+      }
+    ]
+  }
+]

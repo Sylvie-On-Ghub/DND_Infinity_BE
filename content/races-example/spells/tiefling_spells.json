@@ -1,0 +1,167 @@
+[
+  {
+    "id": "thaumaturgy",
+    "name": "Thaumaturgy",
+    "level": 0,
+    "school": "transmutation",
+    "casting_time": "1 action",
+    "range": "30 feet",
+    "components": "V",
+    "duration": "Up to 1 minute",
+    "description": "Produce a minor supernatural effect such as a booming voice, flickering flames or tremors."
+  },
+  {
+    "id": "poison_spray",
+    "name": "Poison Spray",
+    "level": 0,
+    "school": "necromancy",
+    "casting_time": "1 action",
+    "range": "30 feet",
+    "components": "V, S",
+    "duration": "Instantaneous",
+    "description": "Project a puff of noxious gas at a creature.",
+    "save": "con",
+    "effects": [
+      {
+        "kind": "damage",
+        "dice": "1d12",
+        "damage_type": "poison",
+        "dice_tiers": [
+          {
+            "min_level": 5,
+            "dice": "2d12"
+          },
+          {
+            "min_level": 11,
+            "dice": "3d12"
+          },
+          {
+            "min_level": 17,
+            "dice": "4d12"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "ray_of_sickness",
+    "name": "Ray of Sickness",
+    "level": 1,
+    "school": "necromancy",
+    "casting_time": "1 action",
+    "range": "60 feet",
+    "components": "V, S",
+    "duration": "Instantaneous",
+    "description": "A ray of sickly green energy may also poison the target.",
+    "attack": true,
+    "effects": [
+      {
+        "kind": "damage",
+        "dice": "2d8",
+        "damage_type": "poison"
+      }
+    ]
+  },
+  {
+    "id": "false_life",
+    "name": "False Life",
+    "level": 1,
+    "school": "necromancy",
+    "casting_time": "1 action",
+    "range": "Self",
+    "components": "V, S, M",
+    "duration": "1 hour",
+    "description": "Bolster yourself with temporary hit points. Roll 2d4 and add 4 for the amount."
+  },
+  {
+    "id": "ray_of_enfeeblement",
+    "name": "Ray of Enfeeblement",
+    "level": 2,
+    "school": "necromancy",
+    "casting_time": "1 action",
+    "range": "60 feet",
+    "components": "V, S",
+    "duration": "Up to 1 minute",
+    "description": "A beam of black energy saps the strength of a creature it hits.",
+    "attack": true
+  },
+  {
+    "id": "chill_touch",
+    "name": "Chill Touch",
+    "level": 0,
+    "school": "necromancy",
+    "casting_time": "1 action",
+    "range": "Touch",
+    "components": "V, S",
+    "duration": "Instantaneous",
+    "description": "Channeling the chill of the grave, make a melee spell attack. On a hit, the target can't regain hit points until the end of your next turn.",
+    "attack": true,
+    "effects": [
+      {
+        "kind": "damage",
+        "dice": "1d10",
+        "damage_type": "necrotic",
+        "dice_tiers": [
+          {
+            "min_level": 5,
+            "dice": "2d10"
+          },
+          {
+            "min_level": 11,
+            "dice": "3d10"
+          },
+          {
+            "min_level": 17,
+            "dice": "4d10"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "hellish_rebuke",
+    "name": "Hellish Rebuke",
+    "level": 1,
+    "school": "evocation",
+    "casting_time": "1 reaction",
+    "range": "60 feet",
+    "components": "V, S",
+    "duration": "Instantaneous",
+    "description": "Cast in response to taking damage from a creature you can see. The creature that damaged you is wreathed in hellish flames.",
+    "save": "dex",
+    "save_effect": "half damage on a successful save",
+    "effects": [
+      {
+        "kind": "damage",
+        "dice": "2d10",
+        "damage_type": "fire",
+        "upcast_dice": "1d10"
+      }
+    ]
+  },
+  {
+    "id": "darkness",
+    "name": "Darkness",
+    "level": 2,
+    "school": "evocation",
+    "casting_time": "1 action",
+    "range": "60 feet",
+    "components": "V, M",
+    "duration": "Concentration, up to 10 minutes",
+    "description": "Magical darkness spreads from a point you choose.",
+    "concentration": true
+  },
+  {
+    "id": "hold_person",
+    "name": "Hold Person",
+    "level": 2,
+    "school": "enchantment",
+    "casting_time": "1 action",
+    "range": "60 feet",
+    "components": "V, S, M",
+    "duration": "Concentration, up to 1 minute",
+    "description": "Choose a Humanoid you can see within range. It must succeed on a Wisdom saving throw or have the Paralyzed condition for the duration, repeating the save at the end of each of its turns. Each slot level above 2 targets one more Humanoid.",
+    "save": "wis",
+    "concentration": true
+  }
+]

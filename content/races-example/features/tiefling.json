@@ -1,0 +1,280 @@
+[
+  {
+    "id": "tiefling",
+    "name": "Tiefling",
+    "origin": "race",
+    "tags": [
+      "race"
+    ],
+    "description": "Folk marked by a fiendish bloodline from the lower planes, with unusual features such as horns, a tail or odd skin and eye colours. Medium or Small size (chosen when you create the character).",
+    "modifiers": [
+      {
+        "target": "speed.walk",
+        "kind": "add",
+        "value": 30
+      },
+      {
+        "target": "sense.darkvision",
+        "kind": "add",
+        "value": 60
+      }
+    ],
+    "grants": {
+      "languages": [
+        "common"
+      ],
+      "feature_ids": [
+        "tiefling_otherworldly_presence"
+      ]
+    },
+    "choices": [
+      {
+        "id": "fiendish_legacy",
+        "prompt": "Choose a fiendish legacy",
+        "kind": "pick",
+        "count": 1,
+        "options": [
+          {
+            "id": "abyssal",
+            "name": "Abyssal",
+            "grants": {
+              "feature_ids": [
+                "tiefling_abyssal_legacy",
+                "tiefling_abyssal_spell_3",
+                "tiefling_abyssal_spell_5"
+              ]
+            }
+          },
+          {
+            "id": "chthonic",
+            "name": "Chthonic",
+            "grants": {
+              "feature_ids": [
+                "tiefling_chthonic_legacy",
+                "tiefling_chthonic_spell_3",
+                "tiefling_chthonic_spell_5"
+              ]
+            }
+          },
+          {
+            "id": "infernal",
+            "name": "Infernal",
+            "grants": {
+              "feature_ids": [
+                "tiefling_infernal_legacy",
+                "tiefling_infernal_spell_3",
+                "tiefling_infernal_spell_5"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "id": "language",
+        "prompt": "Choose one extra language",
+        "kind": "pick",
+        "count": 1,
+        "filter": {
+          "type": "language",
+          "allowed": [
+            "abyssal",
+            "celestial",
+            "draconic",
+            "dwarvish",
+            "elvish",
+            "giant",
+            "gnomish",
+            "goblin",
+            "halfling",
+            "infernal",
+            "orc",
+            "primordial",
+            "sylvan",
+            "undercommon"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "tiefling_otherworldly_presence",
+    "name": "Otherworldly Presence",
+    "origin": "race",
+    "source_id": "tiefling",
+    "description": "You know the thaumaturgy cantrip. Your fiendish legacy spellcasting ability also applies here.",
+    "spells": {
+      "spell_ids": [
+        "thaumaturgy"
+      ],
+      "ability": "cha"
+    }
+  },
+  {
+    "id": "tiefling_abyssal_legacy",
+    "name": "Abyssal Legacy",
+    "origin": "race",
+    "source_id": "tiefling",
+    "description": "Your lineage grants resistance to poison damage and the poison spray cantrip, with Charisma as the casting ability.",
+    "modifiers": [
+      {
+        "target": "resist.poison",
+        "kind": "add",
+        "value": 1
+      }
+    ],
+    "spells": {
+      "spell_ids": [
+        "poison_spray"
+      ],
+      "ability": "cha"
+    }
+  },
+  {
+    "id": "tiefling_abyssal_spell_3",
+    "name": "Abyssal Legacy: Level 3 Spell",
+    "origin": "race",
+    "source_id": "tiefling",
+    "description": "Intended from level 3 (not enforced by the engine): you can cast ray of sickness once per long rest without a spell slot. Charisma is the casting ability.",
+    "resource": {
+      "name": "Abyssal Legacy (ray of sickness)",
+      "max": 1,
+      "recharge": "long_rest"
+    },
+    "spells": {
+      "spell_ids": [
+        "ray_of_sickness"
+      ],
+      "ability": "cha"
+    }
+  },
+  {
+    "id": "tiefling_abyssal_spell_5",
+    "name": "Abyssal Legacy: Level 5 Spell",
+    "origin": "race",
+    "source_id": "tiefling",
+    "description": "Intended from level 5 (not enforced by the engine): you can cast hold person once per long rest without a spell slot. Charisma is the casting ability.",
+    "resource": {
+      "name": "Abyssal Legacy (hold person)",
+      "max": 1,
+      "recharge": "long_rest"
+    },
+    "spells": {
+      "spell_ids": [
+        "hold_person"
+      ],
+      "ability": "cha"
+    }
+  },
+  {
+    "id": "tiefling_chthonic_legacy",
+    "name": "Chthonic Legacy",
+    "origin": "race",
+    "source_id": "tiefling",
+    "description": "Your lineage grants resistance to necrotic damage and the chill touch cantrip, with Charisma as the casting ability.",
+    "modifiers": [
+      {
+        "target": "resist.necrotic",
+        "kind": "add",
+        "value": 1
+      }
+    ],
+    "spells": {
+      "spell_ids": [
+        "chill_touch"
+      ],
+      "ability": "cha"
+    }
+  },
+  {
+    "id": "tiefling_chthonic_spell_3",
+    "name": "Chthonic Legacy: Level 3 Spell",
+    "origin": "race",
+    "source_id": "tiefling",
+    "description": "Intended from level 3 (not enforced by the engine): you can cast false life once per long rest without a spell slot. Charisma is the casting ability.",
+    "resource": {
+      "name": "Chthonic Legacy (false life)",
+      "max": 1,
+      "recharge": "long_rest"
+    },
+    "spells": {
+      "spell_ids": [
+        "false_life"
+      ],
+      "ability": "cha"
+    }
+  },
+  {
+    "id": "tiefling_chthonic_spell_5",
+    "name": "Chthonic Legacy: Level 5 Spell",
+    "origin": "race",
+    "source_id": "tiefling",
+    "description": "Intended from level 5 (not enforced by the engine): you can cast ray of enfeeblement once per long rest without a spell slot. Charisma is the casting ability.",
+    "resource": {
+      "name": "Chthonic Legacy (ray of enfeeblement)",
+      "max": 1,
+      "recharge": "long_rest"
+    },
+    "spells": {
+      "spell_ids": [
+        "ray_of_enfeeblement"
+      ],
+      "ability": "cha"
+    }
+  },
+  {
+    "id": "tiefling_infernal_legacy",
+    "name": "Infernal Legacy",
+    "origin": "race",
+    "source_id": "tiefling",
+    "description": "Your lineage grants resistance to fire damage and the fire bolt cantrip, with Charisma as the casting ability.",
+    "modifiers": [
+      {
+        "target": "resist.fire",
+        "kind": "add",
+        "value": 1
+      }
+    ],
+    "spells": {
+      "spell_ids": [
+        "fire_bolt"
+      ],
+      "ability": "cha"
+    }
+  },
+  {
+    "id": "tiefling_infernal_spell_3",
+    "name": "Infernal Legacy: Level 3 Spell",
+    "origin": "race",
+    "source_id": "tiefling",
+    "description": "Intended from level 3 (not enforced by the engine): you can cast hellish rebuke once per long rest without a spell slot. Charisma is the casting ability.",
+    "resource": {
+      "name": "Infernal Legacy (hellish rebuke)",
+      "max": 1,
+      "recharge": "long_rest"
+    },
+    "spells": {
+      "spell_ids": [
+        "hellish_rebuke"
+      ],
+      "ability": "cha"
+    }
+  },
+  {
+    "id": "tiefling_infernal_spell_5",
+    "name": "Infernal Legacy: Level 5 Spell",
+    "origin": "race",
+    "source_id": "tiefling",
+    "description": "Intended from level 5 (not enforced by the engine): you can cast darkness once per long rest without a spell slot. Charisma is the casting ability.",
+    "resource": {
+      "name": "Infernal Legacy (darkness)",
+      "max": 1,
+      "recharge": "long_rest"
+    },
+    "spells": {
+      "spell_ids": [
+        "darkness"
+      ],
+      "ability": "cha"
+    }
+  }
+]
