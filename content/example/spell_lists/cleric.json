@@ -1,7 +1,0 @@
-{
-  "id": "cleric",
-  "name": "Cleric",
-  "spell_ids": [
-    "cure_wounds"
-  ]
-}

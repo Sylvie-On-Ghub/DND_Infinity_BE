@@ -1,2 +1,5 @@
 # Saved characters are local play data
 /data/characters/
+
+# Content packs
+/content/
