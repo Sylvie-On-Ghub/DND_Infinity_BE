@@ -1136,6 +1136,20 @@
         },
         "type": "object"
       },
+      "GrantedSpells": {
+        "properties": {
+          "min_level": {
+            "type": "integer"
+          },
+          "spell_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
       "Grants": {
         "properties": {
           "armour_profs": {
@@ -1578,6 +1592,12 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "level": {
+            "type": "integer"
+          },
+          "spell_list": {
+            "type": "string"
           },
           "tag": {
             "type": "string"
@@ -2375,6 +2395,9 @@
             },
             "type": "array"
           },
+          "granted": {
+            "type": "boolean"
+          },
           "higher_levels": {
             "type": "string"
           },
@@ -2476,6 +2499,12 @@
           "expanded_spells": {
             "items": {
               "type": "string"
+            },
+            "type": "array"
+          },
+          "granted_spells": {
+            "items": {
+              "$ref": "#/components/schemas/GrantedSpells"
             },
             "type": "array"
           },
@@ -2620,6 +2649,9 @@
         "properties": {
           "attack": {
             "$ref": "#/components/schemas/AttackDetails"
+          },
+          "base_weapon": {
+            "type": "string"
           },
           "category": {
             "type": "string"

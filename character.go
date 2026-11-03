@@ -218,7 +218,7 @@ type Grants struct {
 
 type Prerequisite struct {
 	Description string `json:"description"`      // always shown
-	Target      string `json:"target,omitempty"` // sheet value to check, e.g. "ability.str"; empty => can't be auto-checked
+	Target      string `json:"target,omitempty"` // sheet value to check, e.g. "ability.str" or "feature.pact_of_the_blade" (1 if held); empty => can't be auto-checked
 	Min         int    `json:"min,omitempty"`
 }
 
@@ -239,10 +239,14 @@ type Option struct {
 
 // PoolFilter describes a pool by rule instead of listing every option, e.g.
 // {Type:"skill", Allowed:["athletics","stealth"]} or {Type:"feat", Tag:"fighting_style"}.
+// A spell pool ({Type:"spell", SpellList:"warlock", Level:6}) adds each pick to the feature's own
+// spells block, so the picks share its casting ability and resource (Mystic Arcanum).
 type PoolFilter struct {
-	Type    string   `json:"type"` // skill | tool | language | feat | feature_tag
-	Tag     string   `json:"tag,omitempty"`
-	Allowed []string `json:"allowed,omitempty"` // restrict to this subset (e.g. a class skill list)
+	Type      string   `json:"type"` // skill | tool | language | feat | feature_tag | spell
+	Tag       string   `json:"tag,omitempty"`
+	Allowed   []string `json:"allowed,omitempty"`    // restrict to this subset (e.g. a class skill list)
+	SpellList string   `json:"spell_list,omitempty"` // spell pools: spells on this list
+	Level     int      `json:"level,omitempty"`      // spell pools: spells of this level; 0 = any level
 }
 
 type Choice struct {
@@ -607,6 +611,7 @@ type WeaponStats struct {
 	Attack        AttackDetails `json:"attack"`                   // dice, damage type, range, properties
 	VersatileDice string        `json:"versatile_dice,omitempty"` // e.g. "1d10" when held two-handed
 	MagicBonus    int           `json:"magic_bonus,omitempty"`    // applies to hit and damage; needs attunement if the item does
+	BaseWeapon    string        `json:"base_weapon,omitempty"`    // item id this is a variant of (silvered, +1); proficiency with it counts
 }
 
 // Rider is a dice bonus attached to an attack ("+1d6 Hunter's Mark", "+1d4 Bless").
@@ -698,6 +703,15 @@ type Subclass struct {
 	// (a warlock patron's expanded list, a cleric domain's spells). They become legal picks
 	// for the class's spell source; they are not granted for free.
 	ExpandedSpells []string `json:"expanded_spells,omitempty"`
+	// GrantedSpells are given outright by class level (2024 patron, domain and oath spells): they join the
+	// class's spell source as always known/prepared and don't count against spells known or prepared.
+	// Unlike tiers these accumulate: every entry at or below the class level applies.
+	GrantedSpells []GrantedSpells `json:"granted_spells,omitempty"`
+}
+
+type GrantedSpells struct {
+	MinLevel int      `json:"min_level"`
+	SpellIDs []string `json:"spell_ids"`
 }
 
 // Class is a table of features by level plus what the class grants at the start.
@@ -745,7 +759,7 @@ type DiceTier struct {
 // SpellEffect is optional structure on a spell. Spells without it are just text.
 type SpellEffect struct {
 	Kind          string     `json:"kind"` // "damage" | "healing"
-	Dice          string     `json:"dice"` // "8d6"
+	Dice          string     `json:"dice"` // "8d6"; may be empty when dice_tiers add dice from a later level
 	DamageType    DamageType `json:"damage_type,omitempty"`
 	AddAbilityMod bool       `json:"add_ability_mod,omitempty"` // healing spells usually add the casting modifier
 	DiceTiers     []DiceTier `json:"dice_tiers,omitempty"`      // by character level
@@ -833,6 +847,7 @@ type SpellView struct {
 	Ritual        bool              `json:"ritual,omitempty"`
 	Concentration bool              `json:"concentration,omitempty"`
 	Prepared      bool              `json:"prepared"`
+	Granted       bool              `json:"granted,omitempty"` // given by the subclass; not counted against spells_allowed
 	Description   string            `json:"description,omitempty"`
 	HigherLevels  string            `json:"higher_levels,omitempty"`
 	Attack        bool              `json:"attack,omitempty"`

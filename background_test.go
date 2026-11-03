@@ -6,6 +6,7 @@ package character
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -408,5 +409,105 @@ func TestExampleWayfarer(t *testing.T) {
 	c.Classes = []ClassLevel{{ClassID: "rogue", Level: 5}}
 	if n := luck(mustCompute(t, c, lib, Ruleset{})); n != 3 {
 		t.Errorf("luck points at level 5 = %d, want 3", n)
+	}
+}
+
+func TestExampleToughFeat(t *testing.T) {
+	lib := loadExample(t)
+	for _, lvl := range []int{1, 4, 20} {
+		c := Character{ID: "t", Classes: []ClassLevel{{ClassID: "rogue", Level: lvl}}}
+		without := mustCompute(t, c, lib, Ruleset{}).MaxHP
+		c.FeatureIDs = []string{"tough"}
+		with := mustCompute(t, c, lib, Ruleset{}).MaxHP
+		if with-without != 2*lvl {
+			t.Errorf("level %d: Tough adds %d max HP, want %d", lvl, with-without, 2*lvl)
+		}
+	}
+}
+
+func TestExampleMundaneEquipment(t *testing.T) {
+	lib := loadExample(t)
+	c := Character{ID: "e", Abilities: map[Ability]AbilityScore{Dex: {Score: 16}},
+		Classes: []ClassLevel{{ClassID: "rogue", Level: 1}},
+		Inventory: []InventoryItem{
+			{ID: "a", ItemID: "plate_armor", Quantity: 1, Equipped: true},
+			{ID: "b", ItemID: "glaive", Quantity: 1, Equipped: true},
+			{ID: "c", ItemID: "blowgun", Quantity: 1, Equipped: true},
+			{ID: "d", ItemID: "explorers_pack", Quantity: 1},
+			{ID: "e", ItemID: "pouch", Quantity: 1},
+			{ID: "f", ItemID: "lute", Quantity: 1},
+		}}
+	sh := mustCompute(t, c, lib, Ruleset{})
+	noContentWarnings(t, sh)
+
+	if sh.AC != 18 { // plate ignores Dex
+		t.Errorf("AC in plate = %d, want 18", sh.AC)
+	}
+	if !sh.Skills["stealth"].Disadvantage {
+		t.Error("plate armour should give disadvantage on Stealth")
+	}
+	byItem := map[string]AttackView{}
+	for _, a := range sh.Attacks {
+		byItem[a.ItemID] = a
+	}
+	if g := byItem["glaive"]; g.DamageDice != "1d10" || g.RangeNormal != 10 {
+		t.Errorf("glaive = %+v, want 1d10 with 10 ft reach", g)
+	}
+	if b := byItem["blowgun"]; b.RangeNormal != 25 || b.RangeLong != 100 {
+		t.Errorf("blowgun = %+v, want range 25/100", b)
+	}
+	for _, id := range []string{"explorers_pack", "pouch", "lute"} {
+		found := false
+		for _, v := range sh.Inventory {
+			if v.ItemID == id {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s missing from the inventory", id)
+		}
+	}
+}
+
+func TestSilveredWeapons(t *testing.T) {
+	lib := loadExample(t)
+	dagger, err := lib.Item("silvered_dagger")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(dagger.Description, "shape-shifted") || !contains(dagger.Tags, "silvered") {
+		t.Errorf("silvered dagger should carry the silvered text and tag: %+v", dagger)
+	}
+
+	// A wizard is proficient with daggers by id, so with the silvered one too, and the stats match.
+	c := Character{ID: "w", Classes: []ClassLevel{{ClassID: "wizard", Level: 1}}, Inventory: []InventoryItem{
+		{ID: "a", ItemID: "dagger", Quantity: 1, Equipped: true},
+		{ID: "b", ItemID: "silvered_dagger", Quantity: 1, Equipped: true},
+	}}
+	sh := mustCompute(t, c, lib, Ruleset{})
+	noContentWarnings(t, sh)
+	var plain, silver AttackView
+	for _, a := range sh.Attacks {
+		switch a.ItemID {
+		case "dagger":
+			plain = a
+		case "silvered_dagger":
+			silver = a
+		}
+	}
+	if !silver.Proficient || silver.ToHit != plain.ToHit || silver.DamageDice != plain.DamageDice {
+		t.Errorf("silvered dagger %+v should match the plain one %+v", silver, plain)
+	}
+}
+
+func TestEveryWeaponHasASilveredVariant(t *testing.T) {
+	lib := loadExample(t)
+	for _, it := range lib.items {
+		if it.Weapon == nil || it.Weapon.BaseWeapon != "" {
+			continue
+		}
+		if _, err := lib.Item("silvered_" + it.ID); err != nil {
+			t.Errorf("%s has no silvered variant", it.ID)
+		}
 	}
 }

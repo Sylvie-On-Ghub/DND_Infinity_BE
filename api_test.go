@@ -406,7 +406,7 @@ func TestAPIChoiceOptions(t *testing.T) {
 	rec = call(t, srv, http.MethodGet, "/api/characters/r1/choice-options?feature_id=rogue_asi_4&choice_id=feat", nil)
 	wantStatus(t, rec, http.StatusOK)
 	into(t, rec, &opts)
-	wantFeats := []string{"ability_score_improvement", "alert", "lucky", "skilled", "watchful"}
+	wantFeats := []string{"ability_score_improvement", "alert", "lucky", "skilled", "tough", "watchful"}
 	if len(opts) != len(wantFeats) {
 		t.Fatalf("feat options = %+v, want %v", opts, wantFeats)
 	}

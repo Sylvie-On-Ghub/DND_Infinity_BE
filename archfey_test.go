@@ -1,6 +1,6 @@
 package character
 
-// archfey_test.go - the Archfey warlock subclass: a subclass feature plus an expanded spell list.
+// archfey_test.go - the Archfey warlock subclass: a subclass feature plus patron spells it grants.
 
 import "testing"
 
@@ -55,27 +55,91 @@ func TestArchfeyStepsOfTheFey(t *testing.T) {
 	}
 }
 
-func TestArchfeyExpandedSpellsAreLegalPicks(t *testing.T) {
+func TestArchfeyGrantsPatronSpells(t *testing.T) {
 	lib := loadWarlockLib(t)
 
-	// A patron spell is a legal pick for an archfey warlock.
-	c := archfeyFixture()
-	sp := c.Spellbooks["class:warlock"]
-	sp.Known = []string{"hex", "armor_of_agathys", "faerie_fire", "darkness", "misty_step"}
-	c.Spellbooks["class:warlock"] = sp
-	sh := mustCompute(t, c, lib, Ruleset{})
-	if hasWarningValue(sh, WarnNotInPool, "faerie_fire") {
-		t.Errorf("faerie_fire is an archfey expanded spell but was flagged: %+v", sh.Warnings)
+	// The fixture knows hex, armor_of_agathys, hellish_rebuke, darkness and misty_step: 5 of 5 at level 4.
+	sh := mustCompute(t, archfeyFixture(), lib, Ruleset{})
+	src, ok := findSource(sh, "class:warlock")
+	if !ok {
+		t.Fatal("no warlock spell source")
+	}
+	if src.SpellsAllowed != 5 {
+		t.Errorf("spells allowed = %d, want 5: patron spells don't change it", src.SpellsAllowed)
+	}
+	granted := map[string]bool{}
+	count := map[string]int{}
+	for _, sp := range src.Spells {
+		count[sp.ID]++
+		if sp.Granted {
+			granted[sp.ID] = true
+		}
+	}
+	for _, id := range []string{"calm_emotions", "faerie_fire", "misty_step", "phantasmal_force", "sleep"} {
+		if !granted[id] {
+			t.Errorf("%s should be listed as a granted warlock spell: %+v", id, src.Spells)
+		}
+	}
+	if count["misty_step"] != 1 {
+		t.Errorf("misty_step is both granted and picked; it should be listed once, not %d times", count["misty_step"])
+	}
+	if granted["hex"] {
+		t.Error("hex was picked, not granted")
 	}
 
-	// The same pick for a fiend warlock is flagged: the expansion belongs to the patron.
+	// misty_step is granted, so picking it too doesn't use up a pick: one pick is still open.
+	if p, ok := findPending(sh, "spells:class:warlock", "known"); !ok || p.Remaining != 1 {
+		t.Errorf("want 1 spell known still to choose, got %+v (ok=%v)", p, ok)
+	}
+	if hasWarningValue(sh, WarnOverCount, "6/5") || hasWarningValue(sh, WarnNotInPool, "faerie_fire") {
+		t.Errorf("patron spells should neither count nor be off-list: %+v", sh.Warnings)
+	}
+}
+
+func TestArchfeyPatronSpellsNeedLevelThreeAndThePatron(t *testing.T) {
+	lib := loadWarlockLib(t)
+	hasGranted := func(c Character) bool {
+		sh := mustCompute(t, c, lib, Ruleset{})
+		src, _ := findSource(sh, "class:warlock")
+		for _, sp := range src.Spells {
+			if sp.Granted {
+				return true
+			}
+		}
+		return false
+	}
+
+	c := archfeyFixture()
+	c.Classes[0].Level = 2
+	c.Classes[0].RolledHP = c.Classes[0].RolledHP[:2]
+	if hasGranted(c) {
+		t.Error("archfey patron spells start at warlock level 3")
+	}
+	fiend := mustCompute(t, warlockFixture(), lib, Ruleset{})
+	fsrc, _ := findSource(fiend, "class:warlock")
+	for _, sp := range fsrc.Spells {
+		if sp.Granted && (sp.ID == "faerie_fire" || sp.ID == "calm_emotions" || sp.ID == "sleep") {
+			t.Errorf("a fiend warlock gets fiend spells, not the archfey's %s", sp.ID)
+		}
+	}
+
+	// Picking a patron spell as a fiend is off-list: the spells belong to the patron.
 	f := warlockFixture()
-	sp = f.Spellbooks["class:warlock"]
+	sp := f.Spellbooks["class:warlock"]
 	sp.Known = []string{"hex", "armor_of_agathys", "faerie_fire", "darkness", "misty_step"}
 	f.Spellbooks["class:warlock"] = sp
-	sh = mustCompute(t, f, lib, Ruleset{})
-	if !hasWarningValue(sh, WarnNotInPool, "faerie_fire") {
+	if sh := mustCompute(t, f, lib, Ruleset{}); !hasWarningValue(sh, WarnNotInPool, "faerie_fire") {
 		t.Error("faerie_fire should be off-list for a fiend warlock")
+	}
+}
+
+func TestLoaderRejectsUnknownGrantedSpell(t *testing.T) {
+	lib := mustLoad(t, LoadOptions{}, memPack("p", map[string]string{
+		"classes/c.json": `[{"id":"c","name":"C","hit_die":8,"levels":[[]],"subclasses":[
+			{"id":"s","name":"S","levels":[[]],"granted_spells":[{"min_level":1,"spell_ids":["no_such_spell"]}]}]}]`,
+	}))
+	if !lib.HasErrors() {
+		t.Error("an unknown granted spell should be a content error")
 	}
 }
 

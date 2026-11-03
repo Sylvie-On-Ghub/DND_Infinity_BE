@@ -153,6 +153,8 @@ type gathered struct {
 	casters     []casterEntry
 	resources   []resourceEntry
 	spellGrants []spellGrantEntry
+
+	lib Library // for checking picks from spell pools
 }
 
 func (g *gathered) addGrants(gr Grants) {
@@ -267,6 +269,7 @@ func gather(c Character, lib Library, totalLevel int) *gathered {
 		saves:       map[Ability]bool{},
 		classLevels: map[string]int{},
 		resOf:       map[string]string{},
+		lib:         lib,
 	}
 
 	g.languages = addUnique(g.languages, c.Languages...)
@@ -409,7 +412,8 @@ func (g *gathered) applyFeature(c Character, f Feature, level int) []string {
 		g.resources = append(g.resources, resourceEntry{featureID: f.ID, res: *res})
 		g.resOf[f.ID] = f.ID
 	}
-	if spells != nil {
+	spells = g.withPickedSpells(c, f, spells)
+	if spells != nil && len(spells.SpellIDs) > 0 {
 		before := len(g.resources)
 		g.addSpellGrant("feature:"+f.ID, f.Name, *spells)
 		if len(g.resources) > before && g.resOf[f.ID] == "" {
@@ -561,8 +565,58 @@ func (g *gathered) applyFilterPick(ch Choice, id, scope string) []string {
 		g.addGrants(Grants{Languages: []string{id}})
 	case "feat", "feature_tag":
 		return scopeIDs([]string{id}, scope) // the pick is itself a feature; the main loop resolves it (and its own choices)
+	case "spell":
+		// Added to the feature's spell grant by withPickedSpells, before the grant is recorded.
 	}
 	return nil
+}
+
+// withPickedSpells adds the spells picked from a feature's spell pools to its spells block, so they
+// share its casting ability and resource. Like other filter picks, one outside the pool warns but
+// still applies.
+func (g *gathered) withPickedSpells(c Character, f Feature, spells *SpellGrant) *SpellGrant {
+	for _, ch := range f.Choices {
+		if ch.Filter == nil || ch.Filter.Type != "spell" {
+			continue
+		}
+		sel, ok := findSelection(c.Selections, f.ID, ch.ID)
+		if !ok || len(sel.Picked) == 0 {
+			continue
+		}
+		for _, id := range sel.Picked {
+			if why := g.outsideSpellPool(ch.Filter, id); why != "" {
+				g.warnings = append(g.warnings, mkWarning(WarnNotInPool, f.ID, ch.ID, "", id,
+					fmt.Sprintf("%q %s, so it isn't an option for %q", id, why, ch.Prompt)))
+			}
+		}
+		grant := SpellGrant{}
+		if spells != nil {
+			grant = *spells
+		}
+		grant.SpellIDs = addUnique(append([]string(nil), grant.SpellIDs...), sel.Picked...)
+		spells = &grant
+	}
+	return spells
+}
+
+// outsideSpellPool says why a spell isn't in a spell pool, or "" when it is.
+func (g *gathered) outsideSpellPool(f *PoolFilter, id string) string {
+	sp, err := g.lib.Spell(id)
+	if err != nil {
+		return "is not a known spell"
+	}
+	if f.Level > 0 && sp.Level != f.Level {
+		return fmt.Sprintf("is level %d, not level %d", sp.Level, f.Level)
+	}
+	if len(f.Allowed) > 0 && !contains(f.Allowed, id) {
+		return "is outside the allowed list"
+	}
+	if f.SpellList != "" {
+		if sl, err := g.lib.SpellList(f.SpellList); err == nil && !contains(sl.SpellIDs, id) {
+			return fmt.Sprintf("is not on the %s spell list", f.SpellList)
+		}
+	}
+	return ""
 }
 
 // libraryHasTagged reports whether the library can list its features and any carries the tag.
@@ -1043,6 +1097,14 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 		case strings.HasPrefix(target, "skill."):
 			v, ok := skillBonus[strings.TrimPrefix(target, "skill.")]
 			return v, ok
+		case strings.HasPrefix(target, "feature."):
+			want := strings.TrimPrefix(target, "feature.")
+			for _, f := range g.features {
+				if baseFeatureID(f.ID) == want {
+					return 1, true
+				}
+			}
+			return 0, true
 		}
 		return 0, false
 	}
@@ -1519,12 +1581,13 @@ func computeAttacks(g *gathered, rules Ruleset, k *calc, modOf map[Ability]int, 
 			magic = ws.MagicBonus
 		}
 		out = append(out, buildAttack(attackSpec{
-			name:            w.item.Name,
-			itemID:          w.item.ID,
-			d:               ws.Attack,
-			versatile:       ws.VersatileDice,
-			magic:           magic,
-			proficient:      w.proficient || contains(g.weapons, ws.Category) || contains(g.weapons, w.item.ID),
+			name:      w.item.Name,
+			itemID:    w.item.ID,
+			d:         ws.Attack,
+			versatile: ws.VersatileDice,
+			magic:     magic,
+			proficient: w.proficient || contains(g.weapons, ws.Category) || contains(g.weapons, w.item.ID) ||
+				(ws.BaseWeapon != "" && contains(g.weapons, ws.BaseWeapon)),
 			abilityOverride: w.abilityOverride,
 		}, k, modOf, pb))
 	}
@@ -1563,6 +1626,7 @@ type casterEntry struct {
 	level   int
 	def     SpellcastingDef
 	extra   []string // spells the chosen subclass adds to the class list
+	granted []string // spells the chosen subclass gives outright at this class level
 }
 
 type resourceEntry struct {
@@ -1636,7 +1700,7 @@ func (g *gathered) expandClasses(c Character, lib Library, queue []queued, seen 
 				fmt.Sprintf("%s has no feature table for levels above %d", class.Name, len(class.Levels))))
 		}
 
-		var subExtra []string
+		var subExtra, subGranted []string
 		if cl.SubclassID != "" {
 			var sub *Subclass
 			for j := range class.Subclasses {
@@ -1658,6 +1722,11 @@ func (g *gathered) expandClasses(c Character, lib Library, queue []queued, seen 
 					}
 				}
 				subExtra = sub.ExpandedSpells
+				for _, gs := range sub.GrantedSpells {
+					if gs.MinLevel <= cl.Level {
+						subGranted = addUnique(subGranted, gs.SpellIDs...)
+					}
+				}
 			}
 		} else if class.SubclassLevel > 0 && cl.Level >= class.SubclassLevel && len(class.Subclasses) > 0 {
 			g.pending = append(g.pending, PendingChoice{
@@ -1674,7 +1743,7 @@ func (g *gathered) expandClasses(c Character, lib Library, queue []queued, seen 
 		}
 
 		if class.Spellcasting != nil {
-			g.casters = append(g.casters, casterEntry{classID: class.ID, name: class.Name, level: cl.Level, def: *class.Spellcasting, extra: subExtra})
+			g.casters = append(g.casters, casterEntry{classID: class.ID, name: class.Name, level: cl.Level, def: *class.Spellcasting, extra: subExtra, granted: subGranted})
 		}
 	}
 	return queue
@@ -2002,6 +2071,9 @@ func computeSpells(c Character, g *gathered, lib Library, rules Ruleset, k *calc
 				for _, id := range ce.extra {
 					onList[id] = true
 				}
+				for _, id := range ce.granted {
+					onList[id] = true
+				}
 			}
 		}
 		checkList := func(ids []string, choice string) {
@@ -2014,6 +2086,16 @@ func computeSpells(c Character, g *gathered, lib Library, rules Ruleset, k *calc
 						fmt.Sprintf("%q is not on the %s spell list", id, ce.name)))
 				}
 			}
+		}
+		// Granted spells are free: a copy also picked by hand doesn't use up a pick either.
+		chosen := func(ids []string) int {
+			n := 0
+			for _, id := range ids {
+				if !contains(ce.granted, id) {
+					n++
+				}
+			}
+			return n
 		}
 		countCheck := func(choice, prompt string, have, allowed int) {
 			switch {
@@ -2056,12 +2138,12 @@ func computeSpells(c Character, g *gathered, lib Library, rules Ruleset, k *calc
 					}
 				}
 			}
-			countCheck("prepared", "Prepare spells for "+ce.name, len(state.Prepared), spellsAllowed)
+			countCheck("prepared", "Prepare spells for "+ce.name, chosen(state.Prepared), spellsAllowed)
 		default:
 			spellsAllowed = tableAt(def.SpellsKnown, ce.level)
 			shown = state.Known
 			checkList(state.Known, "known")
-			countCheck("known", "Choose spells known for "+ce.name, len(state.Known), spellsAllowed)
+			countCheck("known", "Choose spells known for "+ce.name, chosen(state.Known), spellsAllowed)
 		}
 		checkList(state.Cantrips, "cantrips")
 		countCheck("cantrips", "Choose cantrips for "+ce.name, len(state.Cantrips), cantripsAllowed)
@@ -2077,7 +2159,13 @@ func computeSpells(c Character, g *gathered, lib Library, rules Ruleset, k *calc
 				src.Cantrips = append(src.Cantrips, buildSpellView(sp, cs, k, totalLevel, true))
 			}
 		}
-		for _, id := range shown {
+		// Granted spells first, then the character's own picks; a spell in both is listed once, as granted.
+		listed := map[string]bool{}
+		for _, id := range append(append([]string{}, ce.granted...), shown...) {
+			if listed[id] {
+				continue
+			}
+			listed[id] = true
 			sp, ok := look(srcID, id)
 			if !ok {
 				continue
@@ -2086,7 +2174,13 @@ func computeSpells(c Character, g *gathered, lib Library, rules Ruleset, k *calc
 				warns = append(warns, mkWarning(WarnSpellTooHigh, pendID, "", "", id,
 					fmt.Sprintf("%s is level %d but %s can only cast up to level %d right now", sp.Name, sp.Level, ce.name, cs.maxSlotLevel)))
 			}
-			src.Spells = append(src.Spells, buildSpellView(sp, cs, k, totalLevel, true))
+			v := buildSpellView(sp, cs, k, totalLevel, true)
+			v.Granted = contains(ce.granted, id)
+			if v.Granted && sp.Level == 0 {
+				src.Cantrips = append(src.Cantrips, v)
+			} else {
+				src.Spells = append(src.Spells, v)
+			}
 		}
 		sources = append(sources, src)
 	}

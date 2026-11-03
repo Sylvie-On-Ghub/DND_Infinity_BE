@@ -886,6 +886,15 @@ func prereqMet(sh Sheet, p Prerequisite) (met, checkable bool) {
 			return true, false
 		}
 		return sk.Bonus >= p.Min, true
+	case strings.HasPrefix(p.Target, "feature."):
+		want, n := strings.TrimPrefix(p.Target, "feature."), 0
+		for _, f := range sh.Features {
+			if baseFeatureID(f.FeatureID) == want {
+				n = 1
+				break
+			}
+		}
+		return n >= p.Min, true
 	}
 	return true, false
 }
@@ -896,8 +905,8 @@ func prereqMet(sh Sheet, p Prerequisite) (met, checkable bool) {
 //
 // Explicit options are always eligible. Filter pools: skills are ineligible if already held at the
 // granted level; feats need to come from a library that can list its features, must not already be
-// held, and must meet their prerequisites. Tool, language and feature_tag pools can only offer their
-// allowed list.
+// held, and must meet their prerequisites. Spell pools offer the spells of their level on their list.
+// Tool and language pools can only offer their allowed list.
 func ChoiceOptions(c Character, lib Library, rules Ruleset, featureID, choiceID string) ([]EligibleOption, error) {
 	choice, err := findChoice(lib, featureID, choiceID)
 	if err != nil {
@@ -999,6 +1008,30 @@ func ChoiceOptions(c Character, lib Library, rules Ruleset, featureID, choiceID 
 							break
 						}
 					}
+				}
+				out = append(out, o)
+			}
+			sort.SliceStable(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+		case "spell":
+			// A spell pool is its spell list (or allowed list) narrowed to the level. A spell already
+			// chosen for another pool is offered but marked.
+			ids := f.Allowed
+			if f.SpellList != "" {
+				if sl, err := lib.SpellList(f.SpellList); err == nil {
+					ids = sl.SpellIDs
+				}
+			}
+			for _, id := range ids {
+				sp, err := lib.Spell(id)
+				if err != nil || (f.Level > 0 && sp.Level != f.Level) {
+					continue
+				}
+				if len(f.Allowed) > 0 && !contains(f.Allowed, id) {
+					continue
+				}
+				o := EligibleOption{OptionID: id, Name: sp.Name, Eligible: true}
+				if held[id] {
+					o.Eligible, o.Reason = false, "already chosen"
 				}
 				out = append(out, o)
 			}

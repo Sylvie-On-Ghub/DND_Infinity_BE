@@ -424,7 +424,7 @@ var (
 		RechargeShortRest: true, RechargeLongRest: true, RechargeDawn: true, RechargeNone: true,
 	}
 	itemKinds   = map[ItemKind]bool{ItemArmour: true, ItemShield: true, ItemWeapon: true, ItemOther: true}
-	filterTypes = map[string]bool{"skill": true, "tool": true, "language": true, "feat": true, "feature_tag": true}
+	filterTypes = map[string]bool{"skill": true, "tool": true, "language": true, "feat": true, "feature_tag": true, "spell": true}
 	prepModes   = map[string]bool{"": true, PrepKnown: true, PrepPrepared: true, PrepBook: true}
 )
 
@@ -608,6 +608,9 @@ func (v *validator) checkableTarget(t string) bool {
 		return isAbility(strings.TrimPrefix(t, "ability."))
 	case strings.HasPrefix(t, "skill."):
 		return v.skills[strings.TrimPrefix(t, "skill.")]
+	case strings.HasPrefix(t, "feature."):
+		_, ok := v.l.features[strings.TrimPrefix(t, "feature.")]
+		return ok
 	}
 	return false
 }
@@ -694,10 +697,26 @@ func (v *validator) choices(kind, id, where string, chs []Choice) {
 
 		if ch.Filter != nil {
 			if !filterTypes[ch.Filter.Type] {
-				v.err(kind, id, "%s: unknown filter type %q (skill, tool, language, feat, feature_tag)", at, ch.Filter.Type)
+				v.err(kind, id, "%s: unknown filter type %q (skill, tool, language, feat, feature_tag, spell)", at, ch.Filter.Type)
 			}
 			if ch.Filter.Type == "feature_tag" && ch.Filter.Tag == "" && len(ch.Filter.Allowed) == 0 {
 				v.err(kind, id, "%s: a feature_tag filter needs a tag or an allowed list", at)
+			}
+			if ch.Filter.Type == "spell" {
+				if ch.Filter.SpellList != "" {
+					if _, ok := v.l.lists[ch.Filter.SpellList]; !ok {
+						v.err(kind, id, "%s: unknown spell_list %q", at, ch.Filter.SpellList)
+					}
+				}
+				for _, sid := range ch.Filter.Allowed {
+					v.spellRef(kind, id, at+" allowed list", sid)
+				}
+				if kind != "feature" {
+					v.err(kind, id, "%s: a spell filter adds to a feature's spells block, so it can only be used on a feature", at)
+				}
+			}
+			if ch.Filter.Type != "spell" && (ch.Filter.SpellList != "" || ch.Filter.Level != 0) {
+				v.warn(kind, id, "%s: spell_list and level only apply to spell filters", at)
 			}
 			if ch.Filter.Type == "skill" {
 				for _, sid := range ch.Filter.Allowed {
@@ -741,6 +760,11 @@ func (v *validator) feature(f Feature) {
 	v.resource(k, f.ID, "feature", f.Resource)
 	v.grants(k, f.ID, "feature", f.Grants)
 	v.choices(k, f.ID, "feature", f.Choices)
+	for _, ch := range f.Choices {
+		if ch.Filter != nil && ch.Filter.Type == "spell" && f.Spells == nil {
+			v.err(k, f.ID, "choice %q picks spells, so the feature needs a spells block (with the casting ability) for them to join", ch.ID)
+		}
+	}
 	v.prerequisites(k, f.ID, "feature", f.Prerequisites)
 	v.spellGrant(k, f.ID, "feature", f.Spells)
 	for _, af := range f.ACFormulas {
@@ -805,6 +829,11 @@ func (v *validator) item(it Item) {
 			v.warn(k, it.ID, "weapon has no category, so proficiency can only match its id")
 		}
 		v.attack(k, it.ID, "weapon", it.Weapon.Attack)
+		if b := it.Weapon.BaseWeapon; b != "" {
+			if base, ok := v.l.items[b]; !ok || base.Weapon == nil {
+				v.warn(k, it.ID, "weapon: base_weapon %q is not a weapon in the library", b)
+			}
+		}
 		if it.Weapon.VersatileDice != "" && !diceRe.MatchString(it.Weapon.VersatileDice) {
 			v.err(k, it.ID, "weapon: versatile_dice %q must look like \"1d10\"", it.Weapon.VersatileDice)
 		}
@@ -846,6 +875,11 @@ func (v *validator) class(c Class) {
 		subSeen[sub.ID] = true
 		for _, sid := range sub.ExpandedSpells {
 			v.spellRef(k, c.ID, fmt.Sprintf("subclass %q expanded spells", sub.ID), sid)
+		}
+		for _, gs := range sub.GrantedSpells {
+			for _, sid := range gs.SpellIDs {
+				v.spellRef(k, c.ID, fmt.Sprintf("subclass %q granted spells (level %d)", sub.ID, gs.MinLevel), sid)
+			}
 		}
 		for i, row := range sub.Levels {
 			for _, fid := range row {
@@ -897,7 +931,9 @@ func (v *validator) spell(s Spell) {
 		if e.Kind != "damage" && e.Kind != "healing" {
 			v.err(k, s.ID, "%s: kind %q must be damage or healing", at, e.Kind)
 		}
-		if !diceRe.MatchString(e.Dice) {
+		if e.Dice == "" && len(e.DiceTiers) > 0 {
+			// no dice until the first tier (Green Flame Blade's extra damage starts at level 5)
+		} else if !diceRe.MatchString(e.Dice) {
 			v.err(k, s.ID, "%s: dice %q must look like \"8d6\" (put flat bonuses in the note)", at, e.Dice)
 		}
 		if e.UpcastDice != "" && !diceRe.MatchString(e.UpcastDice) {
