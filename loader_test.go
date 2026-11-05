@@ -2,11 +2,14 @@ package character
 
 // loader_test.go - tests for content loading and validation.
 // Most use in-memory packs (testing/fstest), so they need no files on disk.
-// The example-pack tests read content/example and skip themselves if that folder isn't there.
+// The example-pack tests read content/example and content/classes and skip themselves if those folders
+// aren't there.
 // Written without being able to run them: a failure may be a test mistake as much as a code bug.
 
 import (
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -305,12 +308,15 @@ func loadExample(t *testing.T) *ContentLibrary {
 	if _, err := os.Stat("content/example"); err != nil {
 		t.Skip("content/example not found: copy the content folder next to the Go files to run this test")
 	}
-	lib, err := LoadDirs(LoadOptions{Strict: true}, "content/example")
+	if _, err := os.Stat("content/classes"); err != nil {
+		t.Skip("content/classes not found: copy the content folder next to the Go files to run this test")
+	}
+	lib, err := LoadDirs(LoadOptions{Strict: true}, "content/example", "content/classes")
 	if err != nil {
 		if lib != nil {
 			dumpIssues(t, lib)
 		}
-		t.Fatalf("example pack failed to load: %v", err)
+		t.Fatalf("the example and classes packs failed to load: %v", err)
 	}
 	return lib
 }
@@ -330,7 +336,7 @@ func noContentWarnings(t *testing.T, sh Sheet) {
 func TestExamplePackLoadsClean(t *testing.T) {
 	lib := loadExample(t)
 	c := lib.Counts()
-	if c["skills"] != 18 || c["classes"] != 2 || c["spell_lists"] != 2 {
+	if c["skills"] != 18 || c["classes"] != 4 || c["spell_lists"] != 3 {
 		t.Errorf("counts = %v", c)
 	}
 	for _, is := range lib.Issues() {
@@ -483,5 +489,61 @@ func TestHomebrewPackOverridesExample(t *testing.T) {
 	if lib.HasErrors() {
 		dumpIssues(t, lib)
 		t.Error("overriding should not produce errors")
+	}
+}
+
+func TestFindPacksOrder(t *testing.T) {
+	root := t.TempDir()
+	write := func(name, packJSON string) {
+		t.Helper()
+		dir := filepath.Join(root, name)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if packJSON != "" {
+			if err := os.WriteFile(filepath.Join(dir, "pack.json"), []byte(packJSON), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	write("zeta", `{"id":"zeta"}`)
+	write("alpha", "") // pack.json is optional
+	write("core", `{"id":"core","load_order":-1}`)
+	write("late", `{"id":"late","load_order":5}`)
+	write("broken", `{not json`)
+	write(".git", "")
+	if err := os.WriteFile(filepath.Join(root, "notes.txt"), []byte("not a pack"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := FindPacks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, d := range got {
+		names = append(names, filepath.Base(d))
+	}
+	if want := []string{"core", "alpha", "broken", "zeta", "late"}; !slices.Equal(names, want) {
+		t.Errorf("order = %v, want %v", names, want)
+	}
+}
+
+func TestFindPacksProblems(t *testing.T) {
+	if _, err := FindPacks(filepath.Join(t.TempDir(), "missing")); err == nil {
+		t.Error("a missing folder should be an error")
+	}
+	if _, err := FindPacks(t.TempDir()); err == nil {
+		t.Error("a folder with no packs should be an error")
+	}
+}
+
+func TestLoadOrderIsAcceptedInPackJSON(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "pack.json"), []byte(`{"id":"p","load_order":2}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadDirs(LoadOptions{Strict: true}, root); err != nil {
+		t.Errorf("load_order should be a known pack.json field: %v", err)
 	}
 }

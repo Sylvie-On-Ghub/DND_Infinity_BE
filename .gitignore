@@ -3,3 +3,12 @@
 
 # Content packs
 /content/
+
+# Databases hold user data
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+
+# Secrets
+.env

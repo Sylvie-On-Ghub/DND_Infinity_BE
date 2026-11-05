@@ -13,7 +13,7 @@ before you start, and copy its shape.
 4. A short **report**: files created, how to load them, the checker output, and anything in the source rules
    that the engine **cannot** express (see "Limits").
 
-Do not edit `content/example/`. Do not edit existing Go files unless a rule you need genuinely cannot be
+Playable races go in `content/core-races/` and classes in `content/classes/` (older editions of a class in `content/legacy-classes/`). Do not edit `content/example/`. Do not edit existing Go files unless a rule you need genuinely cannot be
 expressed; in that case stop, describe the gap in your report, and write the closest description-only trait.
 
 ## How the project works (what you need to know)
@@ -32,6 +32,9 @@ expressed; in that case stop, describe the gap in your report, and write the clo
 
   A `.json` file may hold **one object** or an **array** of objects. A file in any other folder is ignored
   with a warning. JSON is parsed **strictly**: an unknown key is an error, so a misspelt field fails loudly.
+- By default the server loads **every pack in `content/`**, so a new folder there is picked up automatically.
+  They load by `"load_order"` in `pack.json` (lowest first, default 0), then folder name. `content/example` is -1,
+  so it loads first, and `content/core-races` is 1, so its Tiefling spells override the same spells in `content/classes`. `-content a,b` loads only those packs, in that order.
 - **A race is a feature** with `"origin": "race"` and the tag `"race"`. Each racial trait is **another feature**
   that the race grants. The tag is what makes it appear in `GET /api/content/races` and count as a valid
   `race_id`; without it the character gets a `wrong_kind` warning.
@@ -150,10 +153,13 @@ All of these go on the race feature or on a trait feature.
 | Damage resistance / immunity / vulnerability | `{"target":"resist.fire","kind":"add","value":1}` (`immune.<type>`, `vuln.<type>`; damage types are free text, lowercase) |
 | Bonus to a save, check, skill, AC, initiative or HP maximum | `{"target":"save.wis","kind":"add","value":1}`; other targets: `save.all`, `check.<ability>`, `check.all`, `skill.<id>`, `passive.<skill id>`, `ac`, `initiative`, `hp.max` |
 | Advantage or disadvantage | `{"target":"save.wis","kind":"advantage"}`. Add `"condition":"against being charmed"` if it is situational; a conditional modifier appears as a note and changes no number |
-| Attack or damage bonuses | targets `attack.all`, `attack.melee`, `attack.ranged`, `damage.all`, `damage.melee`, `damage.ranged`, `damage.spell`; an extra-dice bonus uses `"dice":"1d6"` with kind `add` |
+| Attack or damage bonuses | targets `attack.all`, `attack.melee`, `attack.ranged`, `damage.all`, `damage.melee`, `damage.ranged`, `damage.spell`, `damage.cantrip.<class id>`; an extra-dice bonus uses `"dice":"1d6"` with kind `add` |
+| A bonus that depends on equipment | add `"requires"` to the modifier: `armour` (a shield alone doesn't count), `no_heavy_armour_or_shield`, or, on attack and damage targets, `weapon`, `melee_weapon`, `one_handed_melee_alone` or `thrown_weapon` |
+| A speed equal to another speed | `{"target":"speed.swim","kind":"min","value_speed":"walk"}` |
 | A reminder with no maths | `{"target":"check.all","kind":"note","note":"Text shown on the sheet"}` |
 | Carrying capacity doubled | grant the existing feature `powerful_build`, or `{"target":"carry_capacity","kind":"multiply","value":2}` |
 | Fixed skill proficiency | `"grants":{"skills":{"perception":"trained"}}` (levels: `half`, `trained`, `expert`) |
+| Fixed skills on a background | nothing extra: if the character already has one from elsewhere, the sheet adds a pending `skill_replacement` choice on the background to pick any other skill |
 | Choose a skill (or several) | a choice: `{"id":"skill","prompt":"Choose one skill","kind":"pick","count":1,"filter":{"type":"skill","allowed":["arcana","history"]}}`. Omit `allowed` to allow any skill. |
 | Tool, weapon or armour proficiency | `"grants":{"tools":{"smiths_tools":"trained"},"weapon_profs":["longsword","martial"],"armour_profs":["light"]}` (weapons match a category such as `simple` / `martial`, or a specific item id) |
 | Fixed languages | `"grants":{"languages":["common","elvish"]}` |
@@ -162,7 +168,8 @@ All of these go on the race feature or on a trait feature.
 | Natural weapon (claws, bite) | an action with attack details: `"actions":[{"name":"Claws","type":"action","is_attack":true,"attack":{"damage_dice":"1d6","damage_type":"slashing","range_normal":5,"properties":["finesse"]}}]` |
 | Innate spell, at will | `"spells":{"spell_ids":["some_spell"],"ability":"cha"}`. `ability` is the casting ability for its save DC and attack bonus. |
 | Innate spell, limited uses | the same, plus `"resource":{"name":"Once per day","max":1,"recharge":"long_rest"}` |
-| A limited-use ability (breath weapon) | `"resource":{"name":"Breath","max":1,"recharge":"short_rest"}` plus an `actions` entry describing it. Recharge is `short_rest`, `long_rest`, `dawn` or `none`. |
+| A limited-use ability (breath weapon) | `"resource":{"name":"Breath","max":1,"recharge":"short_rest"}` plus an `actions` entry describing it. Recharge is `short_rest`, `long_rest`, `dawn` or `none`. Add `"short_rest_regain":1` to a longer recharge if a Short Rest gives some uses back. An action on another feature can spend it with `"resource_from":"<feature id>"`. |
+| An extra cantrip for a class | `{"target":"spell.cantrips.<class id>","kind":"add","value":1}` |
 | A trait that gets stronger with level | `"tiers":[{"min_level":1,"modifiers":[...]},{"min_level":6,"modifiers":[...]}]`. A tier can carry `modifiers`, `actions`, `grants`, a `resource` and `spells`. For a race the level used is the character's total level (for a class feature, the level in that class). Only the highest tier at or below the level applies; tiers replace each other. |
 | Spells that unlock at a level | put a `spells` block inside a tier: `"tiers":[{"min_level":3,"spells":{"spell_ids":["spell_a"],"ability":"con"}},{"min_level":5,"spells":{"spell_ids":["spell_a","spell_b"],"ability":"con"}}]`. A tier's spells are added to the feature's own `spells` block, as one spell source. **A higher tier replaces the lower one, so list every tier spell that should still apply at that level.** A tier can leave out `ability` if the feature's own `spells` block names one. Add `"resource"` for limited uses; the uses are shared by every spell in that source. |
 | Anything else (size, creature type, flavour) | put it in the feature's `description` |
@@ -178,7 +185,7 @@ Valid values at a glance:
 
 State these plainly in your report instead of working around them with invented fields:
 
-- **Modifiers are fixed numbers.** "Add your Constitution modifier to X" cannot be calculated. Use a `note` modifier plus the description.
+- **Modifiers can't use arbitrary formulas.** A value is a fixed number or, for kind `add`, an ability modifier: `{"target":"save.all","kind":"add","value":1,"value_ability":"cha"}` adds the Charisma modifier, minimum +1. Anything else, such as half a modifier, needs a `note` modifier plus the description.
 - **No per-spell bonuses.** A modifier cannot target one named spell, only `damage.spell` (all spell damage).
 - **Size and creature type are not modelled.** Put them in the description.
 - **No choosing of tools or free languages by the player**, except by a `filter` of type `tool`/`language` with an `allowed` list.

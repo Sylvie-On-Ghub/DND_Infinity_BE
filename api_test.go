@@ -1,38 +1,65 @@
 package character
 
-// api_test.go - tests for api.go through net/http/httptest, using the in-memory store and the
-// example content pack (tests skip themselves if content/example isn't there).
+// api_test.go - tests for api.go through net/http/httptest, using a fresh database and the
+// example and classes content packs (tests skip themselves if those folders aren't there).
 // Written without being able to run them: a failure may be a test mistake as much as a code bug.
 
 import (
 	"bytes"
+	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-func newTestServer(t *testing.T, mods ...func(*Config)) (*Server, *MemoryStore) {
+// testConfig is a working server configuration on a fresh database, with no content.
+func testConfig(t *testing.T) (Config, *SQLiteStore) {
+	t.Helper()
+	db := newTestDB(t)
+	seedSession(t, db, testOwner, testToken)
+	return Config{Store: NewSQLiteStore(db), Auth: NewAuth(db, nil)}, NewSQLiteStore(db)
+}
+
+// seedSession makes token a valid session for the user, as if they had just signed in.
+func seedSession(t *testing.T, db *sql.DB, userID, token string) {
+	t.Helper()
+	if _, err := db.Exec(`INSERT OR REPLACE INTO sessions (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)`,
+		hashToken(token), userID, time.Now().Add(sessionLifetime).Unix(), time.Now().Unix()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func newTestServer(t *testing.T, mods ...func(*Config)) (*Server, *SQLiteStore) {
 	t.Helper()
 	lib := loadExample(t)
-	store := NewMemoryStore()
-	cfg := Config{Store: store, Library: lib}
+	cfg, store := testConfig(t)
+	cfg.Library = lib
 	for _, m := range mods {
 		m(&cfg)
 	}
 	return NewServer(cfg), store
 }
 
-// call sends a request. body may be nil, a string of raw JSON, or any value to marshal.
+// call sends a request signed in as testOwner. body may be nil, a string of raw JSON, or any value to marshal.
 func call(t *testing.T, h http.Handler, method, path string, body any) *httptest.ResponseRecorder {
+	t.Helper()
+	return callAs(t, h, testToken, method, path, body)
+}
+
+// callAs is call with a chosen bearer token; an empty token sends no Authorization header.
+func callAs(t *testing.T, h http.Handler, token, method, path string, body any) *httptest.ResponseRecorder {
 	t.Helper()
 	var rd io.Reader
 	switch b := body.(type) {
@@ -46,8 +73,12 @@ func call(t *testing.T, h http.Handler, method, path string, body any) *httptest
 		}
 		rd = bytes.NewReader(data)
 	}
+	req := httptest.NewRequest(method, path, rd)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(method, path, rd))
+	h.ServeHTTP(rec, req)
 	return rec
 }
 
@@ -128,11 +159,26 @@ func wizardFixture(id string) Character {
 	}
 }
 
-func saveFixture(t *testing.T, store *MemoryStore, c Character) {
+func saveFixture(t *testing.T, store *SQLiteStore, c Character) {
 	t.Helper()
-	if err := store.Save(c); err != nil {
+	if _, err := store.Create(context.Background(), testOwner, c); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// withVersion adds the character's current version to a PATCH body, as a client would.
+func withVersion(t *testing.T, h http.Handler, id, patch string) string {
+	t.Helper()
+	var body map[string]any
+	if err := json.Unmarshal([]byte(patch), &body); err != nil {
+		t.Fatal(err)
+	}
+	body["version"] = getChar(t, h, id).Version
+	data, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
 }
 
 // ---------------------------------------------------------------------------
@@ -169,20 +215,44 @@ func TestAPIRoutingErrors(t *testing.T) {
 }
 
 func TestAPICORS(t *testing.T) {
-	srv, _ := newTestServer(t, func(c *Config) { c.CORSOrigin = "http://localhost:5173" })
-	rec := call(t, srv, http.MethodOptions, "/api/characters", nil)
+	const origin, other = "http://localhost:5173", "https://app.example.com"
+	srv, _ := newTestServer(t, func(c *Config) { c.CORSOrigins = []string{origin, other} })
+	withOrigin := func(method, path, o string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, nil)
+		req.Header.Set("Origin", o)
+		return serve(srv, req)
+	}
+
+	rec := withOrigin(http.MethodOptions, "/api/characters", origin)
 	wantStatus(t, rec, http.StatusNoContent)
-	if rec.Header().Get("Access-Control-Allow-Origin") != "http://localhost:5173" {
+	if rec.Header().Get("Access-Control-Allow-Origin") != origin {
 		t.Errorf("preflight headers = %v", rec.Header())
 	}
-	rec = call(t, srv, http.MethodGet, "/api/health", nil)
-	if rec.Header().Get("Access-Control-Allow-Origin") != "http://localhost:5173" {
-		t.Error("normal responses should carry the CORS header too")
+	if !strings.Contains(rec.Header().Get("Access-Control-Allow-Headers"), "Authorization") {
+		t.Errorf("the bearer header must be allowed: %v", rec.Header())
+	}
+	if rec := withOrigin(http.MethodGet, "/api/health", other); rec.Header().Get("Access-Control-Allow-Origin") != other {
+		t.Error("each allowed origin should be echoed back, on normal responses too")
+	}
+	rec = withOrigin(http.MethodGet, "/api/health", "https://evil.example.com")
+	if rec.Header().Get("Access-Control-Allow-Origin") != "" {
+		t.Errorf("an origin not on the list was allowed: %v", rec.Header())
+	}
+	if rec.Header().Get("Vary") != "Origin" {
+		t.Error("the response depends on the origin, so caches must be told")
+	}
+
+	any, _ := newTestServer(t, func(c *Config) { c.CORSOrigins = []string{"*"} })
+	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
+	req.Header.Set("Origin", other)
+	if rec := serve(any, req); rec.Header().Get("Access-Control-Allow-Origin") != "*" {
+		t.Errorf("headers = %v, want *", rec.Header())
 	}
 
 	plain, _ := newTestServer(t)
-	rec = call(t, plain, http.MethodGet, "/api/health", nil)
-	if rec.Header().Get("Access-Control-Allow-Origin") != "" {
+	req = httptest.NewRequest(http.MethodGet, "/api/health", nil)
+	req.Header.Set("Origin", origin)
+	if rec := serve(plain, req); rec.Header().Get("Access-Control-Allow-Origin") != "" {
 		t.Error("no CORS headers should be sent when it isn't configured")
 	}
 }
@@ -223,7 +293,7 @@ func TestAPICharacterLifecycle(t *testing.T) {
 		t.Error("PUT should replace the character")
 	}
 
-	rec = call(t, srv, http.MethodPatch, "/api/characters/"+id, `{"inspiration": 2}`)
+	rec = call(t, srv, http.MethodPatch, "/api/characters/"+id, withVersion(t, srv, id, `{"inspiration": 2}`))
 	wantStatus(t, rec, http.StatusOK)
 	if got := getChar(t, srv, id); got.Inspiration != 2 || got.Name != "Mira the Bold" {
 		t.Errorf("after PATCH: inspiration %d, name %q; want 2 and the name kept", got.Inspiration, got.Name)
@@ -253,7 +323,7 @@ func TestAPICharacterErrors(t *testing.T) {
 	wantError(t, call(t, srv, http.MethodPost, "/api/characters", `{"id":"exists","name":"dup"}`), http.StatusConflict, "already_exists")
 	wantError(t, call(t, srv, http.MethodPost, "/api/characters", `{"id":"bad id"}`), http.StatusBadRequest, "invalid_id")
 	wantError(t, call(t, srv, http.MethodPut, "/api/characters/exists", `{"id":"other"}`), http.StatusBadRequest, "bad_request")
-	wantError(t, call(t, srv, http.MethodPut, "/api/characters/missing", `{"name":"x"}`), http.StatusNotFound, "not_found")
+	wantError(t, call(t, srv, http.MethodPut, "/api/characters/missing", `{"name":"x","version":1}`), http.StatusNotFound, "not_found")
 	wantError(t, call(t, srv, http.MethodPatch, "/api/characters/exists", `{"inspiraton": 1}`), http.StatusBadRequest, "bad_request")
 	wantError(t, call(t, srv, http.MethodPatch, "/api/characters/exists", `{"id": "other"}`), http.StatusBadRequest, "bad_request")
 	wantError(t, call(t, srv, http.MethodDelete, "/api/characters/missing", nil), http.StatusNotFound, "not_found")
@@ -268,7 +338,7 @@ func TestAPISheetPreviewDoesNotSave(t *testing.T) {
 	if sh.Level != 5 || sh.ProficiencyBonus != 3 {
 		t.Errorf("preview level %d, PB %d; want 5 and 3", sh.Level, sh.ProficiencyBonus)
 	}
-	if list, _ := store.List(); len(list) != 0 {
+	if list, _ := store.List(context.Background(), testOwner); len(list) != 0 {
 		t.Errorf("a preview must not save anything: %+v", list)
 	}
 }
@@ -406,7 +476,7 @@ func TestAPIChoiceOptions(t *testing.T) {
 	rec = call(t, srv, http.MethodGet, "/api/characters/r1/choice-options?feature_id=rogue_asi_4&choice_id=feat", nil)
 	wantStatus(t, rec, http.StatusOK)
 	into(t, rec, &opts)
-	wantFeats := []string{"ability_score_improvement", "alert", "lucky", "skilled", "tough", "watchful"}
+	wantFeats := []string{"ability_score_improvement", "alert", "healer", "lucky", "sentinel", "skilled", "tough", "watchful"}
 	if len(opts) != len(wantFeats) {
 		t.Fatalf("feat options = %+v, want %v", opts, wantFeats)
 	}
@@ -617,16 +687,16 @@ func TestAPIContent(t *testing.T) {
 		Warnings int            `json:"warnings"`
 	}
 	into(t, rec, &overview)
-	if overview.Counts["classes"] != 2 || overview.Counts["skills"] != 18 || overview.Errors != 0 {
-		t.Errorf("overview = %+v, want 2 classes, 18 skills and no errors", overview)
+	if overview.Counts["classes"] != 4 || overview.Counts["skills"] != 18 || overview.Errors != 0 {
+		t.Errorf("overview = %+v, want 4 classes, 18 skills and no errors", overview)
 	}
 
 	rec = call(t, srv, http.MethodGet, "/api/content/classes", nil)
 	wantStatus(t, rec, http.StatusOK)
 	var classes []ContentSummary
 	into(t, rec, &classes)
-	if len(classes) != 2 || classes[0].ID != "rogue" || classes[1].ID != "wizard" {
-		t.Errorf("classes = %+v, want rogue and wizard sorted by id", classes)
+	if len(classes) != 4 || classes[0].ID != "cleric" || classes[1].ID != "rogue" || classes[2].ID != "warlock" || classes[3].ID != "wizard" {
+		t.Errorf("classes = %+v, want cleric, rogue, warlock and wizard sorted by id", classes)
 	}
 
 	rec = call(t, srv, http.MethodGet, "/api/content/classes/rogue", nil)
@@ -652,11 +722,10 @@ func TestAPIContent(t *testing.T) {
 
 func TestAPIReloadSwapsContent(t *testing.T) {
 	example := loadExample(t)
-	srv := NewServer(Config{
-		Store:   NewMemoryStore(),
-		Library: newContentLibrary(), // starts empty
-		Reload:  func() (*ContentLibrary, error) { return example, nil },
-	})
+	cfg, _ := testConfig(t)
+	cfg.Library = newContentLibrary() // starts empty
+	cfg.Reload = func() (*ContentLibrary, error) { return example, nil }
+	srv := NewServer(cfg)
 
 	rec := call(t, srv, http.MethodGet, "/api/content/classes", nil)
 	var before []ContentSummary
@@ -670,17 +739,16 @@ func TestAPIReloadSwapsContent(t *testing.T) {
 	rec = call(t, srv, http.MethodGet, "/api/content/classes", nil)
 	var after []ContentSummary
 	into(t, rec, &after)
-	if len(after) != 2 {
-		t.Errorf("after reload: %+v, want 2 classes", after)
+	if len(after) != 4 {
+		t.Errorf("after reload: %+v, want 4 classes", after)
 	}
 }
 
 func TestAPIFailedReloadKeepsOldContent(t *testing.T) {
-	srv := NewServer(Config{
-		Store:   NewMemoryStore(),
-		Library: loadExample(t),
-		Reload:  func() (*ContentLibrary, error) { return nil, errors.New("boom") },
-	})
+	cfg, _ := testConfig(t)
+	cfg.Library = loadExample(t)
+	cfg.Reload = func() (*ContentLibrary, error) { return nil, errors.New("boom") }
+	srv := NewServer(cfg)
 	rec := call(t, srv, http.MethodPost, "/api/content/reload", nil)
 	wantError(t, rec, http.StatusInternalServerError, "reload_failed")
 	if !strings.Contains(rec.Body.String(), "boom") {
@@ -690,7 +758,7 @@ func TestAPIFailedReloadKeepsOldContent(t *testing.T) {
 	rec = call(t, srv, http.MethodGet, "/api/content/classes", nil)
 	var classes []ContentSummary
 	into(t, rec, &classes)
-	if len(classes) != 2 {
+	if len(classes) != 4 {
 		t.Errorf("a failed reload must leave the old content in place, got %+v", classes)
 	}
 }
@@ -731,7 +799,7 @@ func TestAPIPortraitURL(t *testing.T) {
 	srv, _ := newTestServer(t)
 	wantStatus(t, call(t, srv, http.MethodPost, "/api/characters", `{"id":"p1","name":"Pic"}`), http.StatusCreated)
 
-	rec := call(t, srv, http.MethodPatch, "/api/characters/p1", `{"portrait_url":"https://example.com/mira.png"}`)
+	rec := call(t, srv, http.MethodPatch, "/api/characters/p1", withVersion(t, srv, "p1", `{"portrait_url":"https://example.com/mira.png"}`))
 	wantStatus(t, rec, http.StatusOK)
 	var c Character
 	into(t, rec, &c)
@@ -747,7 +815,7 @@ func TestAPIPortraitURL(t *testing.T) {
 
 	for _, bad := range []string{"javascript:alert(1)", "data:image/png;base64,AAAA", "/local/path.png", "https://"} {
 		body, _ := json.Marshal(map[string]string{"portrait_url": bad})
-		wantError(t, call(t, srv, http.MethodPatch, "/api/characters/p1", string(body)), http.StatusBadRequest, "bad_request")
+		wantError(t, call(t, srv, http.MethodPatch, "/api/characters/p1", withVersion(t, srv, "p1", string(body))), http.StatusBadRequest, "bad_request")
 	}
 	wantError(t, call(t, srv, http.MethodPost, "/api/characters", `{"id":"p2","portrait_url":"ftp://x/y.png"}`), http.StatusBadRequest, "bad_request")
 
@@ -756,7 +824,7 @@ func TestAPIPortraitURL(t *testing.T) {
 	if c.PortraitURL != "https://example.com/mira.png" {
 		t.Errorf("a rejected PATCH changed portrait_url to %q", c.PortraitURL)
 	}
-	rec = call(t, srv, http.MethodPatch, "/api/characters/p1", `{"portrait_url":null}`)
+	rec = call(t, srv, http.MethodPatch, "/api/characters/p1", withVersion(t, srv, "p1", `{"portrait_url":null}`))
 	wantStatus(t, rec, http.StatusOK)
 	c = Character{}
 	into(t, rec, &c)
@@ -770,7 +838,7 @@ func TestAPIDetailsPatchOneFieldAtATime(t *testing.T) {
 	wantStatus(t, call(t, srv, http.MethodPost, "/api/characters",
 		`{"id":"d1","details":{"alignment":"Chaotic Good","bonds":"Baba (mentor)"}}`), http.StatusCreated)
 
-	rec := call(t, srv, http.MethodPatch, "/api/characters/d1", `{"details":{"faith":"Mielikki","bonds":null}}`)
+	rec := call(t, srv, http.MethodPatch, "/api/characters/d1", withVersion(t, srv, "d1", `{"details":{"faith":"Mielikki","bonds":null}}`))
 	wantStatus(t, rec, http.StatusOK)
 	var c Character
 	into(t, rec, &c)
@@ -779,4 +847,97 @@ func TestAPIDetailsPatchOneFieldAtATime(t *testing.T) {
 		t.Errorf("details = %+v, want %+v: a PATCH changes only the fields it names", c.Details, want)
 	}
 	wantError(t, call(t, srv, http.MethodPatch, "/api/characters/d1", `{"details":{"eye":"yellow"}}`), http.StatusBadRequest, "bad_request")
+}
+
+// ---------------------------------------------------------------------------
+// Versions
+// ---------------------------------------------------------------------------
+
+func TestAPIStaleWritesAreConflicts(t *testing.T) {
+	srv, store := newTestServer(t)
+	saveFixture(t, store, rogueFixture("r1"))
+
+	stale := getChar(t, srv, "r1")
+	if stale.Version != 1 {
+		t.Fatalf("version = %d, want 1", stale.Version)
+	}
+	rec := call(t, srv, http.MethodPatch, "/api/characters/r1", `{"inspiration":1,"version":1}`)
+	wantStatus(t, rec, http.StatusOK)
+	var c Character
+	into(t, rec, &c)
+	if c.Version != 2 {
+		t.Errorf("version after PATCH = %d, want 2", c.Version)
+	}
+
+	wantError(t, call(t, srv, http.MethodPatch, "/api/characters/r1", `{"inspiration":2,"version":1}`), http.StatusConflict, "version_conflict")
+	stale.Name = "Overwritten"
+	wantError(t, call(t, srv, http.MethodPut, "/api/characters/r1", stale), http.StatusConflict, "version_conflict")
+
+	if got := getChar(t, srv, "r1"); got.Name != "Mira" || got.Inspiration != 1 || got.Version != 2 {
+		t.Errorf("a conflict must change nothing: %+v", got)
+	}
+}
+
+func TestAPIWritesRequireAVersion(t *testing.T) {
+	srv, store := newTestServer(t)
+	saveFixture(t, store, Character{ID: "c", Name: "C"})
+	for _, body := range []string{`{"name":"x"}`, `{"name":"x","version":null}`, `{"name":"x","version":0}`} {
+		wantError(t, call(t, srv, http.MethodPatch, "/api/characters/c", body), http.StatusBadRequest, "bad_request")
+		wantError(t, call(t, srv, http.MethodPut, "/api/characters/c", body), http.StatusBadRequest, "bad_request")
+	}
+	if got := getChar(t, srv, "c"); got.Name != "C" || got.Version != 1 {
+		t.Errorf("a refused write must change nothing: %+v", got)
+	}
+}
+
+func TestAPIVersionComesBackEverywhere(t *testing.T) {
+	srv, store := newTestServer(t)
+	saveFixture(t, store, rogueFixture("r1"))
+
+	var sh Sheet
+	into(t, call(t, srv, http.MethodGet, "/api/characters/r1/sheet", nil), &sh)
+	if sh.Version != 1 {
+		t.Errorf("sheet version = %d, want 1", sh.Version)
+	}
+	e := post(t, srv, "/api/characters/r1/hp", `{"damage": 1}`)
+	if e.Sheet.Version != 2 {
+		t.Errorf("an action's sheet has version %d, want 2", e.Sheet.Version)
+	}
+	// The version from an action is good for the next edit, with no refetch.
+	body := fmt.Sprintf(`{"inspiration":1,"version":%d}`, e.Sheet.Version)
+	wantStatus(t, call(t, srv, http.MethodPatch, "/api/characters/r1", body), http.StatusOK)
+
+	var created Character
+	rec := call(t, srv, http.MethodPost, "/api/characters", `{"name":"New","version":50}`)
+	wantStatus(t, rec, http.StatusCreated)
+	into(t, rec, &created)
+	if created.Version != 1 {
+		t.Errorf("a created character is at version %d, want 1 whatever the body says", created.Version)
+	}
+}
+
+func TestAPIInternalErrorsDontLeakDetails(t *testing.T) {
+	cfg, _ := testConfig(t)
+	srv := NewServer(cfg)
+	cfg.Auth.db.Close() // every query now fails, with a message that names the database
+	rec := call(t, srv, http.MethodGet, "/api/characters", nil)
+	wantError(t, rec, http.StatusInternalServerError, "internal")
+	if strings.Contains(rec.Body.String(), "database") || strings.Contains(rec.Body.String(), "sql") {
+		t.Errorf("the response gives away internal details: %s", rec.Body.String())
+	}
+}
+
+// newRequest builds a request with a raw Authorization header, for testing malformed ones.
+func newRequest(method, path, authorization string) *http.Request {
+	req := httptest.NewRequest(method, path, nil)
+	if authorization != "" {
+		req.Header.Set("Authorization", authorization)
+	}
+	return req
+}
+
+func serve(h http.Handler, req *http.Request) *httptest.ResponseRecorder {
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
 }

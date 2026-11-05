@@ -5,6 +5,7 @@ package character
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"reflect"
@@ -266,14 +267,14 @@ func TestSchemaGeneratorBasics(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestDocumentedRoutesAreReal(t *testing.T) {
-	store := NewMemoryStore()
-	srv := NewServer(Config{
-		Store:  store,
-		Reload: func() (*ContentLibrary, error) { return newContentLibrary(), nil },
-	})
+	cfg, store := testConfig(t)
+	cfg.Reload = func() (*ContentLibrary, error) { return newContentLibrary(), nil }
+	srv := NewServer(cfg)
 	subst := strings.NewReplacer("{id}", "doc", "{entryId}", "e1", "{featureId}", "arcane_recovery", "{kind}", "features")
 
 	for _, rt := range apiRoutes {
+		seedSession(t, cfg.Auth.db, testOwner, testToken)    // the previous route may have been logout
+		store.Delete(context.Background(), testOwner, "doc") // the previous route may have left it, or deleted it
 		saveFixture(t, store, Character{ID: "doc", Name: "Doc"})
 		path := subst.Replace(rt.Path)
 
@@ -295,12 +296,41 @@ func TestDocumentedRoutesAreReal(t *testing.T) {
 	}
 }
 
+// The docs must say which routes need a token, and the server must agree with them.
+func TestDocumentedAuthMatchesTheServer(t *testing.T) {
+	cfg, store := testConfig(t)
+	saveFixture(t, store, Character{ID: "doc", Name: "Doc"})
+	cfg.Reload = func() (*ContentLibrary, error) { return newContentLibrary(), nil }
+	srv := NewServer(cfg)
+	subst := strings.NewReplacer("{id}", "doc", "{entryId}", "e1", "{featureId}", "arcane_recovery", "{kind}", "features")
+	paths := specMap(t)["paths"].(map[string]any)
+
+	for _, rt := range apiRoutes {
+		rec := callAs(t, srv, "", rt.Method, subst.Replace(rt.Path), "{}")
+		isProtected := rec.Code == http.StatusUnauthorized && rt.ID != "verifyLoginCode"
+		if isProtected != routeNeedsAuth(rt) {
+			t.Errorf("%s %s without a token: status %d, but routeNeedsAuth = %v", rt.Method, rt.Path, rec.Code, routeNeedsAuth(rt))
+		}
+		op := paths[rt.Path].(map[string]any)[strings.ToLower(rt.Method)].(map[string]any)
+		_, hasSecurity := op["security"]
+		_, has401 := op["responses"].(map[string]any)["401"]
+		if hasSecurity != routeNeedsAuth(rt) || (routeNeedsAuth(rt) && !has401) {
+			t.Errorf("%s %s: security %v, 401 documented %v, needs auth %v", rt.Method, rt.Path, hasSecurity, has401, routeNeedsAuth(rt))
+		}
+	}
+	schemes := specMap(t)["components"].(map[string]any)["securitySchemes"].(map[string]any)
+	if _, ok := schemes["bearerAuth"]; !ok {
+		t.Errorf("no bearer scheme: %v", schemes)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // The endpoints that serve the docs
 // ---------------------------------------------------------------------------
 
 func TestDocsEndpoints(t *testing.T) {
-	srv := NewServer(Config{Store: NewMemoryStore()})
+	cfg, _ := testConfig(t)
+	srv := NewServer(cfg)
 
 	rec := call(t, srv, http.MethodGet, "/api/openapi.json", nil)
 	wantStatus(t, rec, http.StatusOK)

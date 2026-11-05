@@ -21,7 +21,7 @@ import (
 	"time"
 )
 
-const apiVersion = "0.1.0"
+const apiVersion = "0.2.0"
 
 // ---------------------------------------------------------------------------
 // Types used only to describe responses and bodies
@@ -47,14 +47,15 @@ type HealthResponse struct {
 
 // EntryPatch lists the only fields of an inventory entry that can be patched. Send any subset; null clears.
 type EntryPatch struct {
-	Equipped        *bool   `json:"equipped,omitempty"`
-	Attuned         *bool   `json:"attuned,omitempty"`
-	Stashed         *bool   `json:"stashed,omitempty"`
-	Proficient      *bool   `json:"proficient,omitempty"`
-	Container       *string `json:"container,omitempty"`
-	Notes           *string `json:"notes,omitempty"`
-	AbilityOverride *string `json:"ability_override,omitempty"`
-	Custom          *Item   `json:"custom,omitempty"`
+	Equipped        *bool    `json:"equipped,omitempty"`
+	Attuned         *bool    `json:"attuned,omitempty"`
+	Stashed         *bool    `json:"stashed,omitempty"`
+	Proficient      *bool    `json:"proficient,omitempty"`
+	Container       *string  `json:"container,omitempty"`
+	Notes           *string  `json:"notes,omitempty"`
+	AbilityOverride *string  `json:"ability_override,omitempty"`
+	Custom          *Item    `json:"custom,omitempty"`
+	Tags            []string `json:"tags,omitempty"`
 }
 
 // ---------------------------------------------------------------------------
@@ -94,7 +95,9 @@ var paramDocs = map[string]string{
 var errorDocs = map[int]string{
 	400: "Bad request: malformed JSON, an unknown field, an invalid id, or a request that can't be carried out. Rules problems are never errors; they come back as warnings on the sheet.",
 	404: "Not found: no such character, inventory entry, feature or content.",
-	409: "A character with that id already exists.",
+	401: "Sign in required: the bearer token is missing, unknown or expired.",
+	409: "`already_exists`: you already have a character with that id. `version_conflict`: the character has changed since you read it, so fetch it again and retry.",
+	429: "Too many attempts. The `Retry-After` header says how many seconds to wait.",
 	500: "Unexpected server error.",
 	501: "Not supported by this server's configuration.",
 }
@@ -102,7 +105,7 @@ var errorDocs = map[int]string{
 var apiRoutes = []routeDoc{
 	// ----- Characters
 	{ID: "listCharacters", Method: "GET", Path: "/api/characters", Tag: "Characters",
-		Summary: "List characters", Description: "Id, name, level and classes for every saved character, sorted by name. A character whose file can't be read is included with `error` set.",
+		Summary: "List characters", Description: "Id, name, level and classes for every saved character, sorted by name.",
 		Response: []CharacterSummary{}, Success: "The characters."},
 	{ID: "createCharacter", Method: "POST", Path: "/api/characters", Tag: "Characters",
 		Summary: "Create a character", Description: "Everything is optional. If `id` is omitted the server generates one. Build the rest up with level-ups, selections and the other actions.",
@@ -112,13 +115,13 @@ var apiRoutes = []routeDoc{
 		Summary: "Get a character", Description: "The stored state: choices and things that change in play. For computed values (AC, bonuses, attacks) use the sheet.",
 		Response: Character{}, Success: "The character.", Errors: []int{400, 404}},
 	{ID: "replaceCharacter", Method: "PUT", Path: "/api/characters/{id}", Tag: "Characters",
-		Summary: "Replace a character", Description: "Replaces the whole character. The character must already exist, and the body's `id` (if given) must match the URL.",
-		Request: Character{}, Response: Character{}, Success: "The saved character.", Errors: []int{400, 404}},
+		Summary: "Replace a character", Description: "Replaces the whole character. The character must already exist, and the body's `id` (if given) must match the URL. `version` is required: send the one you read, and if the character has changed since then the request fails with a 409 and nothing is saved.",
+		Request: Character{}, Response: Character{}, Success: "The saved character, with its new version.", Errors: []int{400, 404, 409}},
 	{ID: "patchCharacter", Method: "PATCH", Path: "/api/characters/{id}", Tag: "Characters",
 		Summary:     "Edit some fields of a character",
-		Description: "JSON merge patch (RFC 7386): send only what changes. Objects merge, arrays replace whole, and `null` clears a field. The result must still be a valid character, so a misspelt field is a 400. A character's id can't be changed.",
-		Request:     Character{}, Example: `{"inspiration":2,"spellbooks":{"class:wizard":{"prepared":["shield"]}}}`,
-		Response: Character{}, Success: "The patched character.", Errors: []int{400, 404}},
+		Description: "JSON merge patch (RFC 7386): send only what changes. Objects merge, arrays replace whole, and `null` clears a field. The result must still be a valid character, so a misspelt field is a 400. A character's id can't be changed. `version` is required: send the one you read, and if the character has changed since then the request fails with a 409 and nothing is saved.",
+		Request:     Character{}, Example: `{"version":3,"inspiration":2,"spellbooks":{"class:wizard":{"prepared":["shield"]}}}`,
+		Response: Character{}, Success: "The patched character, with its new version.", Errors: []int{400, 404, 409}},
 	{ID: "deleteCharacter", Method: "DELETE", Path: "/api/characters/{id}", Tag: "Characters",
 		Summary: "Delete a character", Status: 204, Success: "Deleted.", Errors: []int{400, 404}},
 
@@ -182,11 +185,11 @@ var apiRoutes = []routeDoc{
 	// ----- Inventory
 	{ID: "addItem", Method: "POST", Path: "/api/characters/{id}/inventory", Tag: "Inventory",
 		Summary:     "Add an item",
-		Description: "Send either `item_id` (from /api/content/items) or an inline `custom` item for one-off loot. Quantity defaults to 1. A plain item merges into an existing stack of the same item in the same container unless `new_stack` is true. Returns the entry's id in `entry_id`.",
+		Description: "Send either `item_id` (from /api/content/items) or an inline `custom` item for one-off loot. Quantity defaults to 1. Weapons, armour and shields can also take `tags`, such as `silvered` or `+1`. A plain item merges into an existing stack of the same item with the same tags in the same container unless `new_stack` is true. Returns the entry's id in `entry_id`.",
 		Request:     AddItemRequest{}, Example: `{"item_id":"rope_hempen","quantity":2}`, Response: ActionResponse{}, Success: "The updated sheet and the entry id.", Errors: []int{400, 404}},
 	{ID: "patchEntry", Method: "PATCH", Path: "/api/characters/{id}/inventory/{entryId}", Tag: "Inventory",
 		Summary:     "Change an entry's state",
-		Description: "Equip, attune, stash, move into a container, or add notes. Only the fields below can be patched. Equipping two suits of armour is allowed and shows as a warning. On a custom entry, `custom` is a merge patch onto its inline item: send only the item fields that change (`null` clears one). Sending `custom` for a library item is a 400.",
+		Description: "Equip, attune, stash, move into a container, add notes, or set tags. Only the fields below can be patched. `tags` replaces the entry's whole list and applies to the whole stack; to tag one of several, split it off first with the move action. Equipping two suits of armour is allowed and shows as a warning. On a custom entry, `custom` is a merge patch onto its inline item: send only the item fields that change (`null` clears one). Sending `custom` for a library item is a 400.",
 		Request:     EntryPatch{}, Example: `{"equipped": true, "notes": "my pack", "custom": {"weight": 2}}`, Response: ActionResponse{}, Success: "The updated sheet.", Errors: []int{400, 404}},
 	{ID: "changeQuantity", Method: "POST", Path: "/api/characters/{id}/inventory/{entryId}/quantity", Tag: "Inventory",
 		Summary:     "Change a stack's quantity",
@@ -223,6 +226,20 @@ var apiRoutes = []routeDoc{
 		Summary: "Get one content definition", Description: "The full definition, typed by `kind`: `classes` returns a Class, `features`, `backgrounds` and `races` a Feature, `items` an Item, `spells` a Spell, `spell-lists` a SpellList and `skills` a SkillDef.",
 		OneOf: []any{Class{}, Feature{}, Item{}, Spell{}, SpellList{}, SkillDef{}}, Success: "The definition.", Errors: []int{404}},
 
+	// ----- Account
+	{ID: "requestLoginCode", Method: "POST", Path: "/api/auth/otp/request", Tag: "Account",
+		Summary:     "Ask for a login code",
+		Description: "Sends a 6-digit code by Discord DM, valid for 10 minutes, if the username is approved. The response is the same whether or not it is, and whether or not the DM could be sent. Asking again replaces any earlier code. Limited to 1 request a minute and 5 an hour per username, plus a limit per client address.",
+		Request:     otpRequest{}, Example: `{"username":"mira"}`, Response: OTPRequested{}, Status: 202, Success: "Accepted.", Errors: []int{400, 429}},
+	{ID: "verifyLoginCode", Method: "POST", Path: "/api/auth/otp/verify", Tag: "Account",
+		Summary:     "Sign in with a login code",
+		Description: "Exchanges a code for a session token, which is only ever returned here. A code works once, and stops working after 5 failed attempts. An unknown username, a wrong code and an expired code all get the same 401.",
+		Request:     otpVerifyRequest{}, Example: `{"username":"mira","code":"123456"}`, Response: SessionResponse{}, Success: "Signed in.", Errors: []int{400, 401, 429}},
+	{ID: "logout", Method: "POST", Path: "/api/auth/logout", Tag: "Account",
+		Summary: "Sign out", Description: "Ends the session this token belongs to. Other devices stay signed in.", Status: 204, Success: "Signed out."},
+	{ID: "getMe", Method: "GET", Path: "/api/me", Tag: "Account",
+		Summary: "Who am I", Response: User{}, Success: "The signed-in user."},
+
 	// ----- Server
 	{ID: "getRuleset", Method: "GET", Path: "/api/ruleset", Tag: "Server",
 		Summary: "Get the ruleset in force", Description: "Currencies, spell slot tables, the inspiration cap and other table-level settings, with defaults filled in.",
@@ -240,11 +257,13 @@ type quantityDoc = quantityRequest
 // ---------------------------------------------------------------------------
 
 var schemaNames = map[reflect.Type]string{
-	reflect.TypeOf(errorBody{}):       "ErrorResponse",
-	reflect.TypeOf(errorDetail{}):     "ErrorDetail",
-	reflect.TypeOf(restRequest{}):     "RestRequest",
-	reflect.TypeOf(ackRequest{}):      "AcknowledgementRequest",
-	reflect.TypeOf(quantityRequest{}): "QuantityRequest",
+	reflect.TypeOf(errorBody{}):        "ErrorResponse",
+	reflect.TypeOf(errorDetail{}):      "ErrorDetail",
+	reflect.TypeOf(restRequest{}):      "RestRequest",
+	reflect.TypeOf(ackRequest{}):       "AcknowledgementRequest",
+	reflect.TypeOf(quantityRequest{}):  "QuantityRequest",
+	reflect.TypeOf(otpRequest{}):       "LoginCodeRequest",
+	reflect.TypeOf(otpVerifyRequest{}): "LoginCodeVerifyRequest",
 }
 
 var typeDocs = map[string]string{
@@ -253,53 +272,64 @@ var typeDocs = map[string]string{
 }
 
 var fieldDocs = map[string]string{
-	"Sheet.warnings":                "Rules problems found in the character. The API never rejects these: show them, and let the user acknowledge ones that are intentional.",
-	"Sheet.pending_choices":         "Choices the character is entitled to but hasn't made. Drives level-up flows. Fill them in with the selections endpoint.",
-	"Sheet.notes":                   "Situational modifiers, advantage and disadvantage, and reminders that don't change a number.",
-	"Sheet.attacks":                 "Computed attacks for equipped weapons, feature-granted attacks, and an unarmed strike.",
-	"Sheet.spellcasting":            "One entry per spell source: classes, plus features and items that grant spells.",
-	"Sheet.spell_slots":             "Shared spell slots. Pact slots are separate.",
-	"Sheet.pact_slots":              "Pact magic slots. Absent when the character has none.",
-	"Sheet.caster_level":            "Combined caster level for multiclass slot tables. Pact casters don't count.",
-	"Sheet.inventory":               "Resolved inventory entries with names, weights, costs and containers.",
-	"Sheet.carry":                   "Carried weight against capacity, and the encumbrance state.",
-	"Sheet.wallet":                  "Coins by denomination and their total value in base units.",
-	"Sheet.resources":               "Limited-use feature resources with uses spent.",
-	"Sheet.features":                "Every feature the character has, from classes, subclasses, race, background, feats and choices, in the order they resolved. The race and background themselves are listed too.",
-	"Sheet.actions":                 "Actions granted by features and equipped items. Those from a feature carry its feature_id and, if it has limited uses, a resource_id matching resources[].feature_id.",
-	"Action.feature_id":             "On the sheet: the feature that granted this action, matching features[].feature_id. Absent for item actions. Ignored in content.",
-	"Action.resource_id":            "On the sheet: the granting feature's limited-use resource, matching resources[].feature_id. Usually the same as feature_id; a resource attached to a feature's spells is keyed feature:<id>. Absent when there is none. Ignored in content.",
-	"FeatureView.resource_id":       "Its limited-use resource, matching resources[].feature_id. Absent when it has none.",
-	"FeatureView.feature_id":        "The instance id, as used by resources, selections and actions. A repeatable feat taken twice has two ids.",
-	"FeatureView.source":            "The feature's own origin, or else the class, race or background it was reached through. other when neither says.",
-	"FeatureView.source_id":         "The class, race or background it belongs to. A feat with no source of its own gives its own id.",
-	"FeatureView.granted_by":        "The feature whose grant or choice added this one, for example the ASI feature a feat was picked from. Absent for top-level features.",
-	"FeatureView.level":             "The class level it was gained at. Absent for features that don't come from a class.",
-	"Sheet.ac_detail":               "Which AC formula was used, and every alternative with whether it was eligible.",
-	"Character.coins":               "Currency id to amount. Negative means owed.",
-	"Character.selections":          "Choices made on features. Change them with the selections endpoints.",
-	"Character.spellbooks":          "Spell choices per source id, for example class:wizard.",
-	"Character.spell_slots_used":    "Spell level to slots spent.",
-	"Character.resource_used":       "Feature id to uses spent.",
-	"Character.acknowledgements":    "Warnings the user has marked as intentional, matched by key.",
-	"Character.modifiers":           "Ad hoc modifiers on this character, applied on top of those from features and items.",
-	"Character.classes":             "One entry per class, in the order taken. The first is the character's starting class.",
-	"Warning.key":                   "A stable identifier. Use it to acknowledge the warning.",
-	"Warning.acknowledged":          "True if the character has an acknowledgement matching this key.",
-	"CharacterSummary.error":        "Set when the stored data couldn't be read.",
-	"EligibleOption.eligible":       "False when the character doesn't qualify. Frontends decide whether to hide or grey out the option.",
-	"Modifier.dice":                 "Makes this a dice rider (for example 1d6 Sneak Attack), shown on attacks rather than added into numbers.",
-	"InventoryItem.custom":          "A one-off item defined inline, used instead of item_id when set.",
-	"InventoryItem.container":       "The id of the entry this one is stored in.",
-	"InventoryItem.proficient":      "Weapons: proficient with this one weapon regardless of weapon_profs, for example a Pact of the Blade weapon. Pair it with ability_override cha.",
-	"InventoryView.container":       "The id of the entry this one is stored in. Empty at the top level.",
-	"InventoryView.contents":        "Containers only: total weight of everything stored inside, including nested containers, whether or not it counts toward carried weight. Absent means 0. Compare with container_info.capacity.",
-	"InventoryView.container_info":  "Present when the entry is a container, even an empty one. capacity is the weight it holds (0 or absent = no limit); ignores_contents_weight means its contents add nothing to carried weight (Bag of Holding).",
-	"Character.background_id":       "A feature tagged background. List them at /api/content/backgrounds and set this with PATCH.",
-	"Character.details":             "Descriptive free text: alignment, appearance, personality and so on. The rules engine never reads it. A PATCH can change one field, e.g. {\"details\":{\"faith\":\"Mielikki\"}}.",
-	"Character.portrait_url":        "A link to an image for the character, http or https. The server stores the link only; the browser loads the image. Clear it with null in a PATCH.",
-	"CharacterSummary.portrait_url": "The character's portrait link, if set.",
-	"Character.race_id":             "A feature tagged race. List them at /api/content/races and set this with PATCH.",
+	"Sheet.warnings":                 "Rules problems found in the character. The API never rejects these: show them, and let the user acknowledge ones that are intentional.",
+	"Sheet.pending_choices":          "Choices the character is entitled to but hasn't made. Drives level-up flows. Fill them in with the selections endpoint.",
+	"Sheet.notes":                    "Situational modifiers, advantage and disadvantage, and reminders that don't change a number.",
+	"Sheet.attacks":                  "Computed attacks for equipped weapons, feature-granted attacks, and an unarmed strike.",
+	"Sheet.spellcasting":             "One entry per spell source: classes, plus features and items that grant spells.",
+	"Sheet.spell_slots":              "Shared spell slots. Pact slots are separate.",
+	"Sheet.pact_slots":               "Pact magic slots. Absent when the character has none.",
+	"Sheet.caster_level":             "Combined caster level for multiclass slot tables. Pact casters don't count.",
+	"Sheet.inventory":                "Resolved inventory entries with names, weights, costs and containers.",
+	"Sheet.carry":                    "Carried weight against capacity, and the encumbrance state.",
+	"Sheet.wallet":                   "Coins by denomination and their total value in base units.",
+	"Sheet.resources":                "Limited-use feature resources with uses spent.",
+	"Sheet.features":                 "Every feature the character has, from classes, subclasses, race, background, feats and choices, in the order they resolved. The race and background themselves are listed too.",
+	"Sheet.actions":                  "Actions granted by features and equipped items. Those from a feature carry its feature_id and, if it has limited uses, a resource_id matching resources[].feature_id.",
+	"Action.feature_id":              "On the sheet: the feature that granted this action, matching features[].feature_id. Absent for item actions. Ignored in content.",
+	"Action.resource_id":             "On the sheet: the granting feature's limited-use resource, matching resources[].feature_id. Usually the same as feature_id; a resource attached to a feature's spells is keyed feature:<id>. With resource_from in content, that feature's resource instead. Absent when there is none. Ignored in content.",
+	"Resource.short_rest_regain":     "Uses a Short Rest gives back when recharge is a longer rest, such as one use of Channel Divinity. A Long Rest still restores them all.",
+	"ResourceView.short_rest_regain": "Uses a Short Rest gives back when recharge is a longer rest. A Long Rest still restores them all.",
+	"Action.resource_from":           "In content: a feature whose resource this action spends, such as a subclass's option for the class's Channel Divinity. Never on the sheet, where it becomes resource_id.",
+	"FeatureView.resource_id":        "Its limited-use resource, matching resources[].feature_id. Absent when it has none.",
+	"FeatureView.feature_id":         "The instance id, as used by resources, selections and actions. A repeatable feat taken twice has two ids.",
+	"FeatureView.source":             "The feature's own origin, or else the class, race or background it was reached through. other when neither says.",
+	"FeatureView.source_id":          "The class, race or background it belongs to. A feat with no source of its own gives its own id.",
+	"FeatureView.granted_by":         "The feature whose grant or choice added this one, for example the ASI feature a feat was picked from. Absent for top-level features.",
+	"FeatureView.level":              "The class level it was gained at. Absent for features that don't come from a class.",
+	"Sheet.ac_detail":                "Which AC formula was used, and every alternative with whether it was eligible.",
+	"Character.coins":                "Currency id to amount. Negative means owed.",
+	"Character.selections":           "Choices made on features. Change them with the selections endpoints.",
+	"Character.spellbooks":           "Spell choices per source id, for example class:wizard.",
+	"Character.spell_slots_used":     "Spell level to slots spent.",
+	"Character.resource_used":        "Feature id to uses spent.",
+	"Character.acknowledgements":     "Warnings the user has marked as intentional, matched by key.",
+	"Character.modifiers":            "Ad hoc modifiers on this character, applied on top of those from features and items.",
+	"Character.classes":              "One entry per class, in the order taken. The first is the character's starting class.",
+	"Warning.key":                    "A stable identifier. Use it to acknowledge the warning.",
+	"Warning.acknowledged":           "True if the character has an acknowledgement matching this key.",
+	"Character.version":              "Goes up by one with every change, including play actions. PUT and PATCH must send the latest one you have.",
+	"Sheet.version":                  "The character's version at the time of this sheet. Use it for the next PUT or PATCH.",
+	"EligibleOption.eligible":        "False when the character doesn't qualify. Frontends decide whether to hide or grey out the option.",
+	"Modifier.requires":              "Limits the modifier to certain equipment. armour: a suit of armour is equipped (a shield doesn't count). no_heavy_armour_or_shield: neither is equipped. one_handed_melee_alone: only on the attack of a melee weapon that isn't two-handed, with no other weapon equipped. thrown_weapon: only on attacks made by throwing a weapon. melee_weapon: only on attacks made with a melee weapon, so not an unarmed strike. weapon: only on attacks made with a weapon, melee, ranged or thrown.",
+	"Modifier.value_speed":           "Uses this speed as the value, for example a swimming speed equal to your walking speed. Pair it with kind min.",
+	"Modifier.value_ability":         "Uses this ability's modifier as the value, with value as the minimum (for example Aura of Protection: Charisma, minimum +1). Only with kind add.",
+	"Modifier.dice":                  "Makes this a dice rider (for example 1d6 Sneak Attack), shown on attacks rather than added into numbers.",
+	"InventoryItem.custom":           "A one-off item defined inline, used instead of item_id when set.",
+	"InventoryItem.tags":             "Weapons, armour and shields: variations of the item. +X adds X to hit and damage on a weapon and X to AC on armour or a shield; silvered adds its rules to a weapon's description; other words are labels. Lowercase; at most one +X.",
+	"AddItemRequest.tags":            "Weapons, armour and shields: variations such as silvered or +1. See InventoryItem.tags.",
+	"EntryPatch.tags":                "Replaces the entry's tags. See InventoryItem.tags.",
+	"InventoryView.tags":             "The entry's tags. name and the numbers elsewhere on the sheet already include them.",
+	"InventoryItem.container":        "The id of the entry this one is stored in.",
+	"InventoryItem.proficient":       "Weapons: proficient with this one weapon regardless of weapon_profs, for example a Pact of the Blade weapon. Pair it with ability_override cha.",
+	"InventoryView.container":        "The id of the entry this one is stored in. Empty at the top level.",
+	"InventoryView.contents":         "Containers only: total weight of everything stored inside, including nested containers, whether or not it counts toward carried weight. Absent means 0. Compare with container_info.capacity.",
+	"InventoryView.container_info":   "Present when the entry is a container, even an empty one. capacity is the weight it holds (0 or absent = no limit); ignores_contents_weight means its contents add nothing to carried weight (Bag of Holding).",
+	"Character.background_id":        "A feature tagged background. List them at /api/content/backgrounds and set this with PATCH.",
+	"Character.details":              "Descriptive free text: alignment, appearance, personality and so on. The rules engine never reads it. A PATCH can change one field, e.g. {\"details\":{\"faith\":\"Mielikki\"}}.",
+	"Character.portrait_url":         "A link to an image for the character, http or https. The server stores the link only; the browser loads the image. Clear it with null in a PATCH.",
+	"CharacterSummary.portrait_url":  "The character's portrait link, if set.",
+	"Character.race_id":              "A feature tagged race. List them at /api/content/races and set this with PATCH.",
 }
 
 var tagDocs = []struct{ Name, Description string }{
@@ -310,6 +340,7 @@ var tagDocs = []struct{ Name, Description string }{
 	{"Inventory", "Items, containers and equipment."},
 	{"Coins", "Gaining, spending, paying and converting currency."},
 	{"Content", "The loaded classes, features, items, spells and skills, and reloading them."},
+	{"Account", "Signing in with a code sent by Discord DM, signing out, and who you are."},
 	{"Server", "Ruleset and health."},
 }
 
@@ -327,6 +358,24 @@ var apiGuide = strings.Join([]string{
 	"- **Content comes from packs.** Class, item, spell and feature ids come from `/api/content`. Homebrew packs layer over the core one, so the id lists can differ between servers.",
 	"- **Strict bodies.** Unknown fields in a request body are a 400, so a typo can't silently drop data.",
 	"",
+	"## Signing in",
+	"",
+	"Accounts are approved by the server's administrator; there is no sign-up.",
+	"",
+	"1. `POST /api/auth/otp/request` with a Discord username. The user gets a code by DM.",
+	"2. `POST /api/auth/otp/verify` with the username and code, and keep the `token` it returns.",
+	"3. Send `Authorization: Bearer <token>` on every request that needs it. Sessions last 30 days and extend as they are used.",
+	"4. A 401 on a request means the session is over: go back to step 1.",
+	"",
+	"Your characters are visible only to you. Character ids are per user, and someone else's character looks exactly like one that doesn't exist.",
+	"",
+	"## Versions",
+	"",
+	"Every character has a `version`, which goes up with every change. It is on the character and on every sheet, including the sheet an action returns.",
+	"",
+	"- `PUT` and `PATCH` must send the latest `version` you have. If the character has changed since, they fail with 409 `version_conflict` and nothing is saved: fetch it again, reapply the change and retry.",
+	"- Play actions, such as damage or spending a slot, don't send a version, because they apply a change relative to the current state. They still move the version on.",
+	"",
 	"## Building a character",
 	"",
 	"1. `POST /api/characters` with a name and ability scores.",
@@ -339,13 +388,12 @@ var apiGuide = strings.Join([]string{
 	"",
 	"## Errors",
 	"",
-	"Every error has the shape `{\"error\": {\"code\": \"...\", \"message\": \"...\"}}` with codes `bad_request`, `invalid_id`, `not_found`, `already_exists`, `bad_conversion`, `method_not_allowed`, `not_supported` and `internal`.",
+	"Every error has the shape `{\"error\": {\"code\": \"...\", \"message\": \"...\"}}` with codes `bad_request`, `invalid_id`, `unauthorized`, `not_found`, `already_exists`, `version_conflict`, `bad_conversion`, `rate_limited`, `method_not_allowed`, `not_supported` and `internal`.",
 	"",
 	"## Notes",
 	"",
-	"- There is no authentication; it is meant to run locally or on a trusted network.",
-	"- Browsers on another origin need the server started with `-cors-origin`.",
-	"- Actions on one character are serialised, so concurrent play actions don't overwrite each other. `PUT` and `PATCH` are last-write-wins.",
+	"- Browsers on another origin need that origin listed in the server's `DND_CORS_ORIGINS`.",
+	"- Actions on one character are serialised, so concurrent play actions don't overwrite each other.",
 }, "\n")
 
 // ---------------------------------------------------------------------------
@@ -497,8 +545,25 @@ func pathParams(path string) []string {
 	return out
 }
 
+// routeNeedsAuth says which documented routes need a session. A test checks this against the server.
+func routeNeedsAuth(rt routeDoc) bool {
+	switch {
+	case strings.HasPrefix(rt.Path, "/api/characters"):
+		return true
+	}
+	switch rt.Path {
+	case "/api/sheet-preview", "/api/content/reload", "/api/me", "/api/auth/logout":
+		return true
+	}
+	return false
+}
+
 func (g *schemaGen) operation(rt routeDoc) map[string]any {
 	op := map[string]any{"operationId": rt.ID, "summary": rt.Summary, "tags": []string{rt.Tag}}
+	if routeNeedsAuth(rt) {
+		op["security"] = []any{map[string]any{"bearerAuth": []any{}}}
+		rt.Errors = append([]int{401}, rt.Errors...)
+	}
 	if rt.Description != "" {
 		op["description"] = rt.Description
 	}
@@ -592,10 +657,18 @@ func buildOpenAPI() map[string]any {
 			"version":     apiVersion,
 			"description": apiGuide,
 		},
-		"servers":    []any{map[string]any{"url": "/", "description": "This server"}},
-		"tags":       tags,
-		"paths":      paths,
-		"components": map[string]any{"schemas": g.components},
+		"servers": []any{map[string]any{"url": "/", "description": "This server"}},
+		"tags":    tags,
+		"paths":   paths,
+		"components": map[string]any{
+			"schemas": g.components,
+			"securitySchemes": map[string]any{
+				"bearerAuth": map[string]any{
+					"type": "http", "scheme": "bearer",
+					"description": "The token from `POST /api/auth/otp/verify`.",
+				},
+			},
+		},
 	}
 }
 

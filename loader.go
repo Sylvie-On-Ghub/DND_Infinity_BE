@@ -4,13 +4,14 @@ package character
 //
 // A pack is a directory:
 //
-//	pack.json                  optional: {"id": "...", "name": "...", "version": "..."}
+//	pack.json                  optional: {"id": "...", "name": "...", "version": "...", "load_order": 0}
 //	skills.json                optional: an array of skill definitions
 //	features/ items/ classes/ spells/ spell_lists/
 //	                           any depth; every .json file holds one object or an array of them
 //
 // Packs load in the order given. A later pack replaces an earlier entry with the same id
 // (reported as a warning), so homebrew can override core content just by reusing an id.
+// FindPacks works out that order for a folder of packs: load_order, lowest first, then folder name.
 // Unknown JSON fields are errors: typos in homebrew are caught instead of silently ignored.
 //
 // Loading never stops at the first problem. Everything is collected as Issues (errors and
@@ -26,6 +27,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -192,6 +194,42 @@ func (l *ContentLibrary) issueAt(sev Severity, kind, id, format string, args ...
 // Loading
 // ---------------------------------------------------------------------------
 
+// packMeta is the contents of a pack.json.
+type packMeta struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Version   string `json:"version"`
+	LoadOrder int    `json:"load_order"` // only used by FindPacks
+}
+
+// FindPacks lists the pack folders directly inside root, in the order they should load. Folders whose
+// names start with a dot are skipped. A pack.json that can't be read counts as load_order 0; loading
+// the pack reports the problem.
+func FindPacks(root string) ([]string, error) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil, fmt.Errorf("content folder: %w", err)
+	}
+	var dirs []string
+	order := map[string]int{}
+	for _, e := range entries { // already sorted by name, and the sort below is stable
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		dir := filepath.Join(root, e.Name())
+		dirs = append(dirs, dir)
+		var meta packMeta
+		if data, err := os.ReadFile(filepath.Join(dir, "pack.json")); err == nil && json.Unmarshal(data, &meta) == nil {
+			order[dir] = meta.LoadOrder
+		}
+	}
+	if len(dirs) == 0 {
+		return nil, fmt.Errorf("content folder %q has no packs in it", root)
+	}
+	sort.SliceStable(dirs, func(i, j int) bool { return order[dirs[i]] < order[dirs[j]] })
+	return dirs, nil
+}
+
 // LoadDirs loads packs from directories, in order.
 func LoadDirs(opts LoadOptions, dirs ...string) (*ContentLibrary, error) {
 	packs := make([]PackSource, 0, len(dirs))
@@ -237,11 +275,7 @@ func (l *ContentLibrary) loadPack(p PackSource) error {
 	name := p.Name
 
 	if data, err := fs.ReadFile(p.FS, "pack.json"); err == nil {
-		var meta struct {
-			ID      string `json:"id"`
-			Name    string `json:"name"`
-			Version string `json:"version"`
-		}
+		var meta packMeta
 		dec := json.NewDecoder(bytes.NewReader(data))
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(&meta); err != nil {
@@ -493,6 +527,35 @@ func (v *validator) modifiers(kind, id, where string, mods []Modifier) {
 		if m.Kind == ModMultiply && m.Value <= 0 {
 			v.err(kind, id, "%s: multiply needs a value greater than 0", at)
 		}
+		switch m.Requires {
+		case "", RequiresArmour, RequiresNoHeavyOrShield:
+		case RequiresOneWeapon, RequiresThrown, RequiresMeleeWeapon, RequiresWeapon:
+			if m.Kind != ModAdd || !(strings.HasPrefix(m.Target, "attack.") || strings.HasPrefix(m.Target, "damage.")) {
+				v.err(kind, id, "%s: requires %q only works on attack or damage targets, with kind add", at, m.Requires)
+			}
+		default:
+			v.err(kind, id, "%s: unknown requires %q", at, m.Requires)
+		}
+		if m.ValueSpeed != "" {
+			switch {
+			case !isSpeed(string(m.ValueSpeed)):
+				v.err(kind, id, "%s: value_speed %q is not a speed", at, m.ValueSpeed)
+			case !strings.HasPrefix(m.Target, "speed.") || m.Target == SpeedTarget(m.ValueSpeed):
+				v.err(kind, id, "%s: value_speed must target a different speed", at)
+			case m.ValueAbility != "":
+				v.err(kind, id, "%s: value_speed and value_ability can't be combined", at)
+			}
+		}
+		if m.ValueAbility != "" {
+			switch {
+			case !isAbility(string(m.ValueAbility)):
+				v.err(kind, id, "%s: value_ability %q is not an ability", at, m.ValueAbility)
+			case m.Kind != ModAdd || m.Dice != "":
+				v.err(kind, id, "%s: value_ability only works with kind add and no dice", at)
+			case strings.HasPrefix(m.Target, "ability."):
+				v.err(kind, id, "%s: value_ability can't target an ability score", at)
+			}
+		}
 		if m.Dice != "" {
 			if m.Kind != ModAdd {
 				v.err(kind, id, "%s: dice only work with kind add", at)
@@ -527,6 +590,9 @@ func (v *validator) actions(kind, id, where string, acts []Action) {
 		if a.Attack != nil {
 			v.attack(kind, id, at, *a.Attack)
 		}
+		if a.ResourceFrom != "" {
+			v.featureRef(kind, id, at+" resource_from", a.ResourceFrom)
+		}
 	}
 }
 
@@ -542,6 +608,9 @@ func (v *validator) resource(kind, id, where string, r *Resource) {
 	}
 	if !recharges[r.Recharge] {
 		v.err(kind, id, "%s resource: recharge %q must be short_rest, long_rest, dawn or none", where, r.Recharge)
+	}
+	if r.ShortRestRegain < 0 {
+		v.err(kind, id, "%s resource: short_rest_regain cannot be negative", where)
 	}
 }
 

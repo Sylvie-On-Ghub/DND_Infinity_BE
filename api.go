@@ -5,19 +5,24 @@ package character
 // Conventions
 //   - JSON in and out, under /api.
 //   - Errors: {"error": {"code": "...", "message": "..."}} with codes bad_request, invalid_id,
-//     not_found, already_exists, bad_conversion, method_not_allowed, not_supported, internal.
+//     unauthorized, not_found, already_exists, version_conflict, bad_conversion, rate_limited,
+//     method_not_allowed, not_supported, internal.
 //   - Request bodies are strict: unknown fields are a 400, so a typo can't silently drop data.
 //   - Rules problems are never errors; they come back as warnings on the sheet.
 //   - Action routes return {"sheet": ...} plus any extra fields (an entry id, a removed flag).
 //   - Read-modify-write actions on one character are serialised by a per-character lock.
+//   - PUT and PATCH send the version they read; a stale one is a 409, so edits can't be lost.
+//
+//   - Character routes need a session; see auth.go. Content and server information are public.
 //
 // Routing is done by hand so it doesn't depend on a recent Go version's pattern mux.
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
+	"log"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -27,18 +32,26 @@ import (
 )
 
 type Config struct {
-	Store      CharacterStore
-	Library    *ContentLibrary
-	Reload     func() (*ContentLibrary, error) // optional; enables POST /api/content/reload
-	Ruleset    Ruleset
-	CORSOrigin string // "" sends no CORS headers; "*" allows any origin
+	Store       CharacterStore
+	Library     *ContentLibrary
+	Reload      func() (*ContentLibrary, error) // optional; enables POST /api/content/reload
+	Ruleset     Ruleset
+	CORSOrigins []string // browser origins allowed to call the API; empty sends no CORS headers, "*" allows any
+	Auth        *Auth    // signs users in; without it, protected routes accept nobody
+
+	// TrustedProxyHeader names the header holding the client's address, such as X-Forwarded-For.
+	// Set it only if every request comes through a proxy that sets it, since clients can forge it.
+	TrustedProxyHeader string
 }
 
 type Server struct {
 	store  CharacterStore
 	rules  Ruleset
-	cors   string
+	cors   []string
 	reload func() (*ContentLibrary, error)
+	auth   *Auth
+
+	proxyHeader string
 
 	mu  sync.RWMutex
 	lib *ContentLibrary
@@ -57,11 +70,15 @@ func NewServer(cfg Config) *Server {
 	return &Server{
 		store:  cfg.Store,
 		rules:  cfg.Ruleset,
-		cors:   cfg.CORSOrigin,
+		cors:   cfg.CORSOrigins,
 		reload: cfg.Reload,
-		lib:    lib,
-		locks:  &lockMap{m: map[string]*sync.Mutex{}},
-		rng:    rand.New(rand.NewSource(time.Now().UnixNano())),
+		auth:   cfg.Auth,
+
+		proxyHeader: cfg.TrustedProxyHeader,
+
+		lib:   lib,
+		locks: &lockMap{m: map[string]*sync.Mutex{}},
+		rng:   rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
 
@@ -72,13 +89,14 @@ type lockMap struct {
 	m  map[string]*sync.Mutex
 }
 
-// lock takes the lock for one character id and returns the function that releases it.
-func (l *lockMap) lock(id string) func() {
+// lock takes the lock for one owner's character and returns the function that releases it.
+func (l *lockMap) lock(ownerID, id string) func() {
+	key := ownerID + "/" + id // neither can contain a slash
 	l.mu.Lock()
-	m, ok := l.m[id]
+	m, ok := l.m[key]
 	if !ok {
 		m = &sync.Mutex{}
-		l.m[id] = m
+		l.m[key] = m
 	}
 	l.mu.Unlock()
 	m.Lock()
@@ -98,7 +116,24 @@ func (s *Server) roll(sides int) int {
 }
 
 func (s *Server) sheetFor(c Character) (Sheet, error) {
-	return Compute(c, s.library(), s.rules)
+	sh, err := Compute(c, s.library(), s.rules)
+	if err != nil {
+		return Sheet{}, err
+	}
+	sh.Version = c.Version
+	return sh, nil
+}
+
+type userIDKey struct{}
+
+func withUserID(ctx context.Context, userID string) context.Context {
+	return context.WithValue(ctx, userIDKey{}, userID)
+}
+
+// userID returns the signed-in user; requireAuth has already run on any route that uses it.
+func userID(r *http.Request) string {
+	id, _ := r.Context().Value(userIDKey{}).(string)
+	return id
 }
 
 // effectiveRuleset fills in the defaults so a frontend sees what is actually in force.
@@ -161,12 +196,17 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 		writeError(w, status, re.Code, re.Msg)
 	case errors.Is(err, ErrNotFound):
 		writeError(w, http.StatusNotFound, "not_found", err.Error())
+	case errors.Is(err, ErrAlreadyExists):
+		writeError(w, http.StatusConflict, "already_exists", err.Error())
+	case errors.Is(err, ErrVersionConflict):
+		writeError(w, http.StatusConflict, "version_conflict", "this character has changed since you read it; fetch it again and retry")
 	case errors.Is(err, ErrInvalidID):
 		writeError(w, http.StatusBadRequest, "invalid_id", err.Error())
 	case errors.Is(err, ErrBadPatch):
 		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
 	default:
-		writeError(w, http.StatusInternalServerError, "internal", err.Error())
+		log.Printf("internal error: %v", err) // can name files and SQL, so it stays out of the response
+		writeError(w, http.StatusInternalServerError, "internal", "something went wrong on the server")
 	}
 }
 
@@ -201,15 +241,27 @@ func splitPath(escaped string) []string {
 	return parts
 }
 
-func (s *Server) setCORS(w http.ResponseWriter) {
-	if s.cors == "" {
+func (s *Server) setCORS(w http.ResponseWriter, r *http.Request) {
+	if len(s.cors) == 0 {
 		return
 	}
 	h := w.Header()
-	h.Set("Access-Control-Allow-Origin", s.cors)
-	h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-	h.Set("Access-Control-Allow-Headers", "Content-Type")
 	h.Set("Vary", "Origin")
+	origin := r.Header.Get("Origin")
+	allowed := ""
+	for _, o := range s.cors {
+		if o == "*" || o == origin {
+			allowed = o
+			break
+		}
+	}
+	if allowed == "" {
+		return
+	}
+	h.Set("Access-Control-Allow-Origin", allowed)
+	h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+	h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+	h.Set("Access-Control-Expose-Headers", "Retry-After")
 }
 
 // ---------------------------------------------------------------------------
@@ -219,10 +271,11 @@ func (s *Server) setCORS(w http.ResponseWriter) {
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		if rec := recover(); rec != nil {
-			writeError(w, http.StatusInternalServerError, "internal", fmt.Sprint("unexpected error: ", rec))
+			log.Printf("panic serving %s %s: %v", r.Method, r.URL.Path, rec)
+			writeError(w, http.StatusInternalServerError, "internal", "something went wrong on the server")
 		}
 	}()
-	s.setCORS(w)
+	s.setCORS(w, r)
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -257,21 +310,55 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			methodNotAllowed(w, "POST")
 			return
 		}
-		s.sheetPreview(w, r)
+		s.requireAuth(w, r, s.sheetPreview)
+	case "me":
+		if r.Method != http.MethodGet {
+			methodNotAllowed(w, "GET")
+			return
+		}
+		s.requireAuth(w, r, s.me)
+	case "auth":
+		s.routeAuth(w, r, segs[1:])
 	case "content":
 		s.routeContent(w, r, segs[1:])
 	case "characters":
-		s.routeCharacters(w, r, segs[1:])
+		s.requireAuth(w, r, func(w http.ResponseWriter, r *http.Request) {
+			s.routeCharacters(w, r, segs[1:])
+		})
 	default:
 		writeError(w, http.StatusNotFound, "not_found", "no such route")
 	}
+}
+
+func (s *Server) routeAuth(w http.ResponseWriter, r *http.Request, segs []string) {
+	var handle func(http.ResponseWriter, *http.Request)
+	switch strings.Join(segs, "/") {
+	case "logout":
+		handle = func(w http.ResponseWriter, r *http.Request) { s.requireAuth(w, r, s.logout) }
+	case "otp/request":
+		handle = s.requestCode
+	case "otp/verify":
+		handle = s.verifyCode
+	default:
+		writeError(w, http.StatusNotFound, "not_found", "no such route")
+		return
+	}
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w, "POST")
+		return
+	}
+	if s.auth == nil {
+		writeError(w, http.StatusNotImplemented, "not_supported", "this server was started without sign-in")
+		return
+	}
+	handle(w, r)
 }
 
 func (s *Server) routeCharacters(w http.ResponseWriter, r *http.Request, segs []string) {
 	if len(segs) == 0 {
 		switch r.Method {
 		case http.MethodGet:
-			s.listCharacters(w)
+			s.listCharacters(w, r)
 		case http.MethodPost:
 			s.createCharacter(w, r)
 		default:
@@ -289,13 +376,13 @@ func (s *Server) routeCharacters(w http.ResponseWriter, r *http.Request, segs []
 	if len(segs) == 1 {
 		switch r.Method {
 		case http.MethodGet:
-			s.getCharacter(w, id)
+			s.getCharacter(w, r, id)
 		case http.MethodPut:
 			s.putCharacter(w, r, id)
 		case http.MethodPatch:
 			s.patchCharacter(w, r, id)
 		case http.MethodDelete:
-			s.deleteCharacter(w, id)
+			s.deleteCharacter(w, r, id)
 		default:
 			methodNotAllowed(w, "GET", "PUT", "PATCH", "DELETE")
 		}
@@ -317,7 +404,7 @@ func (s *Server) routeCharacters(w http.ResponseWriter, r *http.Request, segs []
 			methodNotAllowed(w, "GET")
 			return
 		}
-		s.getSheet(w, id)
+		s.getSheet(w, r, id)
 
 	case "hp":
 		if post() {
@@ -371,7 +458,7 @@ func (s *Server) routeCharacters(w http.ResponseWriter, r *http.Request, segs []
 				s.fail(w, badReq("feature_id and choice_id are required"))
 				return
 			}
-			s.act(w, id, func(c *Character, _ Sheet) (map[string]any, error) {
+			s.act(w, r, id, func(c *Character, _ Sheet) (map[string]any, error) {
 				return map[string]any{"removed": RemoveSelection(c, featureID, choiceID)}, nil
 			})
 		default:
@@ -390,7 +477,7 @@ func (s *Server) routeCharacters(w http.ResponseWriter, r *http.Request, segs []
 				s.fail(w, badReq("key is required"))
 				return
 			}
-			s.act(w, id, func(c *Character, _ Sheet) (map[string]any, error) {
+			s.act(w, r, id, func(c *Character, _ Sheet) (map[string]any, error) {
 				return map[string]any{"removed": RemoveAcknowledgement(c, key)}, nil
 			})
 		default:
@@ -463,12 +550,12 @@ func (s *Server) routeInventory(w http.ResponseWriter, r *http.Request, id strin
 				s.fail(w, err)
 				return
 			}
-			s.act(w, id, func(c *Character, _ Sheet) (map[string]any, error) {
-				return nil, PatchEntry(c, entryID, patch)
+			s.act(w, r, id, func(c *Character, _ Sheet) (map[string]any, error) {
+				return nil, PatchEntry(c, s.library(), entryID, patch)
 			})
 		case http.MethodDelete:
 			deleteContents := r.URL.Query().Get("contents") == "delete"
-			s.act(w, id, func(c *Character, _ Sheet) (map[string]any, error) {
+			s.act(w, r, id, func(c *Character, _ Sheet) (map[string]any, error) {
 				return nil, RemoveEntry(c, entryID, deleteContents)
 			})
 		default:
@@ -511,8 +598,8 @@ func (s *Server) routeInventory(w http.ResponseWriter, r *http.Request, id strin
 // Characters
 // ---------------------------------------------------------------------------
 
-func (s *Server) listCharacters(w http.ResponseWriter) {
-	list, err := s.store.List()
+func (s *Server) listCharacters(w http.ResponseWriter, r *http.Request) {
+	list, err := s.store.List(r.Context(), userID(r))
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -533,25 +620,17 @@ func (s *Server) createCharacter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	unlock := s.locks.lock(c.ID)
-	defer unlock()
-	if _, err := s.store.Get(c.ID); err == nil {
-		s.fail(w, &reqError{Code: "already_exists", Msg: fmt.Sprintf("character %s already exists", c.ID)})
-		return
-	} else if !errors.Is(err, ErrNotFound) {
+	created, err := s.store.Create(r.Context(), userID(r), c)
+	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	if err := s.store.Save(c); err != nil {
-		s.fail(w, err)
-		return
-	}
-	w.Header().Set("Location", "/api/characters/"+c.ID)
-	writeJSON(w, http.StatusCreated, c)
+	w.Header().Set("Location", "/api/characters/"+created.ID)
+	writeJSON(w, http.StatusCreated, created)
 }
 
-func (s *Server) getCharacter(w http.ResponseWriter, id string) {
-	c, err := s.store.Get(id)
+func (s *Server) getCharacter(w http.ResponseWriter, r *http.Request, id string) {
+	c, err := s.store.Get(r.Context(), userID(r), id)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -570,18 +649,20 @@ func (s *Server) putCharacter(w http.ResponseWriter, r *http.Request, id string)
 		return
 	}
 	c.ID = id
+	if c.Version <= 0 {
+		s.fail(w, badReq("version is required: send the version you read"))
+		return
+	}
 
-	unlock := s.locks.lock(id)
+	owner := userID(r)
+	unlock := s.locks.lock(owner, id)
 	defer unlock()
-	if _, err := s.store.Get(id); err != nil { // replacing, not creating: a typo in the URL shouldn't make a new character
+	saved, err := s.store.Update(r.Context(), owner, c) // replacing, not creating: a typo in the URL shouldn't make a new character
+	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	if err := s.store.Save(c); err != nil {
-		s.fail(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, c)
+	writeJSON(w, http.StatusOK, saved)
 }
 
 func (s *Server) patchCharacter(w http.ResponseWriter, r *http.Request, id string) {
@@ -591,9 +672,10 @@ func (s *Server) patchCharacter(w http.ResponseWriter, r *http.Request, id strin
 		return
 	}
 
-	unlock := s.locks.lock(id)
+	owner := userID(r)
+	unlock := s.locks.lock(owner, id)
 	defer unlock()
-	current, err := s.store.Get(id)
+	current, err := s.store.Get(r.Context(), owner, id)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -603,25 +685,36 @@ func (s *Server) patchCharacter(w http.ResponseWriter, r *http.Request, id strin
 		s.fail(w, err)
 		return
 	}
-	if err := s.store.Save(patched); err != nil {
+	// Merging keeps the current version when the patch has none, which would skip the conflict
+	// check, so look for it in the patch itself. MergePatchCharacter has already validated the JSON.
+	var sent struct {
+		Version int `json:"version"`
+	}
+	if err := json.Unmarshal(body, &sent); err != nil || sent.Version <= 0 {
+		s.fail(w, badReq("version is required: send the version you read"))
+		return
+	}
+	saved, err := s.store.Update(r.Context(), owner, patched)
+	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, patched)
+	writeJSON(w, http.StatusOK, saved)
 }
 
-func (s *Server) deleteCharacter(w http.ResponseWriter, id string) {
-	unlock := s.locks.lock(id)
+func (s *Server) deleteCharacter(w http.ResponseWriter, r *http.Request, id string) {
+	owner := userID(r)
+	unlock := s.locks.lock(owner, id)
 	defer unlock()
-	if err := s.store.Delete(id); err != nil {
+	if err := s.store.Delete(r.Context(), owner, id); err != nil {
 		s.fail(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) getSheet(w http.ResponseWriter, id string) {
-	c, err := s.store.Get(id)
+func (s *Server) getSheet(w http.ResponseWriter, r *http.Request, id string) {
+	c, err := s.store.Get(r.Context(), userID(r), id)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -654,7 +747,7 @@ func (s *Server) choiceOptions(w http.ResponseWriter, r *http.Request, id string
 		s.fail(w, badReq("feature_id and choice_id are required"))
 		return
 	}
-	c, err := s.store.Get(id)
+	c, err := s.store.Get(r.Context(), userID(r), id)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -669,11 +762,12 @@ func (s *Server) choiceOptions(w http.ResponseWriter, r *http.Request, id string
 
 // act runs one read-modify-write on a character under its lock. fn gets the character and the sheet
 // as it was before the change; anything it returns is added next to the fresh sheet in the response.
-func (s *Server) act(w http.ResponseWriter, id string, fn func(c *Character, pre Sheet) (map[string]any, error)) {
-	unlock := s.locks.lock(id)
+func (s *Server) act(w http.ResponseWriter, r *http.Request, id string, fn func(c *Character, pre Sheet) (map[string]any, error)) {
+	owner := userID(r)
+	unlock := s.locks.lock(owner, id)
 	defer unlock()
 
-	c, err := s.store.Get(id)
+	c, err := s.store.Get(r.Context(), owner, id)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -688,11 +782,12 @@ func (s *Server) act(w http.ResponseWriter, id string, fn func(c *Character, pre
 		s.fail(w, err)
 		return
 	}
-	if err := s.store.Save(c); err != nil {
+	saved, err := s.store.Update(r.Context(), owner, c)
+	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	sh, err := s.sheetFor(c)
+	sh, err := s.sheetFor(saved)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -713,7 +808,7 @@ func actOn[T any](s *Server, w http.ResponseWriter, r *http.Request, id string,
 		s.fail(w, err)
 		return
 	}
-	s.act(w, id, func(c *Character, pre Sheet) (map[string]any, error) {
+	s.act(w, r, id, func(c *Character, pre Sheet) (map[string]any, error) {
 		return apply(c, pre, req)
 	})
 }
@@ -741,6 +836,22 @@ func contentOverview(lib *ContentLibrary) map[string]any {
 	}
 }
 
+func (s *Server) reloadContent(w http.ResponseWriter, r *http.Request) {
+	if s.reload == nil {
+		writeError(w, http.StatusNotImplemented, "not_supported", "this server was started without reload support")
+		return
+	}
+	fresh, err := s.reload()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "reload_failed", err.Error()+" (the previous content is still in use)")
+		return
+	}
+	s.mu.Lock()
+	s.lib = fresh
+	s.mu.Unlock()
+	writeJSON(w, http.StatusOK, contentOverview(fresh))
+}
+
 func (s *Server) routeContent(w http.ResponseWriter, r *http.Request, segs []string) {
 	lib := s.library()
 
@@ -757,19 +868,7 @@ func (s *Server) routeContent(w http.ResponseWriter, r *http.Request, segs []str
 			methodNotAllowed(w, "POST")
 			return
 		}
-		if s.reload == nil {
-			writeError(w, http.StatusNotImplemented, "not_supported", "this server was started without reload support")
-			return
-		}
-		fresh, err := s.reload()
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "reload_failed", err.Error()+" (the previous content is still in use)")
-			return
-		}
-		s.mu.Lock()
-		s.lib = fresh
-		s.mu.Unlock()
-		writeJSON(w, http.StatusOK, contentOverview(fresh))
+		s.requireAuth(w, r, s.reloadContent)
 
 	case len(segs) == 1:
 		if r.Method != http.MethodGet {
