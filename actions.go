@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -204,7 +205,7 @@ func restoreResources(c *Character, sh Sheet, match func(RechargeType) bool) {
 
 // ApplyRest uses the pre-rest sheet for max HP, level and each resource's recharge.
 //
-//	short: pact slots and short-rest resources come back.
+//	short: pact slots and short-rest resources come back, and short_rest_regain uses of other resources.
 //	long:  also HP to max, temp HP cleared, all slots back, long-rest and dawn resources back,
 //	       half your hit dice back (at least 1), death saves cleared, concentration ends,
 //	       exhaustion drops by 1.
@@ -215,6 +216,15 @@ func ApplyRest(c *Character, sh Sheet, kind string) error {
 	case "short":
 		c.PactSlotsUsed = 0
 		restoreResources(c, sh, func(r RechargeType) bool { return r == RechargeShortRest })
+		for _, r := range sh.Resources {
+			if r.Recharge != RechargeShortRest && r.ShortRestRegain > 0 {
+				if left := c.ResourceUsed[r.FeatureID] - r.ShortRestRegain; left > 0 {
+					c.ResourceUsed[r.FeatureID] = left
+				} else {
+					delete(c.ResourceUsed, r.FeatureID)
+				}
+			}
+		}
 	case "long":
 		c.CurrentHP = sh.MaxHP
 		c.TempHP = 0
@@ -464,16 +474,17 @@ func wouldCycle(c *Character, i int, containerID string) bool {
 }
 
 type AddItemRequest struct {
-	ItemID    string `json:"item_id"`
-	Custom    *Item  `json:"custom"`
-	Quantity  int    `json:"quantity"` // 0 means 1
-	Container string `json:"container"`
-	NewStack  bool   `json:"new_stack"` // don't merge into an existing stack
-	Notes     string `json:"notes"`
+	ItemID    string   `json:"item_id"`
+	Custom    *Item    `json:"custom"`
+	Quantity  int      `json:"quantity"` // 0 means 1
+	Container string   `json:"container"`
+	NewStack  bool     `json:"new_stack"` // don't merge into an existing stack
+	Notes     string   `json:"notes"`
+	Tags      []string `json:"tags"` // weapons and armour: "silvered", "+1" and so on
 }
 
 // AddItem adds an item by library id or as an inline custom item, merging into an existing plain stack
-// of the same item in the same container unless NewStack is set. It returns the entry id.
+// of the same item with the same tags in the same container unless NewStack is set. It returns the entry id.
 // Unlike editing a character directly, adding insists on a known item id: it is an explicit choice of
 // an item, so a typo is better caught here.
 func AddItem(c *Character, lib Library, req AddItemRequest) (string, error) {
@@ -487,10 +498,18 @@ func AddItem(c *Character, lib Library, req AddItemRequest) (string, error) {
 	if qty < 0 {
 		return "", badReq("quantity cannot be negative")
 	}
+	var it Item
 	if req.ItemID != "" {
-		if _, err := lib.Item(req.ItemID); err != nil {
+		var err error
+		if it, err = lib.Item(req.ItemID); err != nil {
 			return "", badReq("item %q was not found in the library", req.ItemID)
 		}
+	} else {
+		it = *req.Custom
+	}
+	tags, err := cleanItemTags(it, req.Tags)
+	if err != nil {
+		return "", err
 	}
 	ensureEntryIDs(c)
 	if req.Container != "" && entryIndex(c, req.Container) < 0 {
@@ -501,14 +520,14 @@ func AddItem(c *Character, lib Library, req AddItemRequest) (string, error) {
 		for i := range c.Inventory {
 			e := &c.Inventory[i]
 			if e.ItemID == req.ItemID && e.Custom == nil && e.Container == req.Container &&
-				!e.Equipped && !e.Attuned && !e.Stashed && e.Notes == "" && e.AbilityOverride == "" {
+				!e.Equipped && !e.Attuned && !e.Stashed && e.Notes == "" && e.AbilityOverride == "" && slices.Equal(e.Tags, tags) {
 				e.Quantity += qty
 				return e.ID, nil
 			}
 		}
 	}
 
-	e := InventoryItem{ID: NewCharacterID(), ItemID: req.ItemID, Quantity: qty, Container: req.Container, Notes: req.Notes}
+	e := InventoryItem{ID: NewCharacterID(), ItemID: req.ItemID, Quantity: qty, Container: req.Container, Notes: req.Notes, Tags: tags}
 	if req.Custom != nil {
 		cp := *req.Custom
 		e.Custom = &cp
@@ -518,9 +537,9 @@ func AddItem(c *Character, lib Library, req AddItemRequest) (string, error) {
 }
 
 // PatchEntry edits an entry's state. Only equipped, attuned, stashed, proficient, container, notes,
-// ability_override and custom can be changed; null clears a field. custom is a merge patch onto a
-// custom entry's inline item, for fixing its name, weight, cost and so on.
-func PatchEntry(c *Character, entryID string, patch map[string]json.RawMessage) error {
+// ability_override, tags and custom can be changed; null clears a field. custom is a merge patch onto
+// a custom entry's inline item, for fixing its name, weight, cost and so on. tags replaces the list.
+func PatchEntry(c *Character, lib Library, entryID string, patch map[string]json.RawMessage) error {
 	ensureEntryIDs(c)
 	i := entryIndex(c, entryID)
 	if i < 0 {
@@ -529,7 +548,7 @@ func PatchEntry(c *Character, entryID string, patch map[string]json.RawMessage) 
 
 	allowed := map[string]bool{
 		"equipped": true, "attuned": true, "stashed": true, "proficient": true, "container": true, "notes": true,
-		"ability_override": true, "custom": true,
+		"ability_override": true, "custom": true, "tags": true,
 	}
 	var unknown []string
 	for k := range patch {
@@ -554,6 +573,20 @@ func PatchEntry(c *Character, entryID string, patch map[string]json.RawMessage) 
 				return err
 			}
 			e.Custom = it
+			continue
+		}
+		if k == "tags" {
+			var tags []string
+			if err := json.Unmarshal(raw, &tags); err != nil {
+				return badReq("tags has the wrong type: %v", err)
+			}
+			it, err := resolveInvItem(lib, e, i)
+			if err != nil {
+				return badReq("this entry's item can't be resolved, so it can't be tagged: %v", err)
+			}
+			if e.Tags, err = cleanItemTags(it, tags); err != nil {
+				return err
+			}
 			continue
 		}
 
@@ -690,7 +723,7 @@ func MoveEntry(c *Character, entryID string, req MoveRequest) (string, error) {
 	}
 
 	c.Inventory[i].Quantity -= *req.Quantity
-	moved := InventoryItem{ID: NewCharacterID(), ItemID: e.ItemID, Quantity: *req.Quantity, Container: req.Container, Notes: e.Notes}
+	moved := InventoryItem{ID: NewCharacterID(), ItemID: e.ItemID, Quantity: *req.Quantity, Container: req.Container, Notes: e.Notes, Tags: slices.Clone(e.Tags)}
 	if e.Custom != nil {
 		cp := *e.Custom
 		moved.Custom = &cp
@@ -847,6 +880,9 @@ func findChoice(lib Library, featureID, choiceID string) (Choice, error) {
 		f, err := lib.Feature(base)
 		if err != nil {
 			return Choice{}, notFound("feature %q not found", base)
+		}
+		if choiceID == SkillReplacementChoice && contains(f.Tags, "background") {
+			return skillReplacementChoice("Choose a replacement skill", 1), nil
 		}
 		choices = f.Choices
 	}

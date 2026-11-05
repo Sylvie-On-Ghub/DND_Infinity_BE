@@ -168,8 +168,8 @@ func TestEmberkinLineages(t *testing.T) {
 func TestEmberkinIsListedAsARace(t *testing.T) {
 	lib := loadEmberkinLib(t)
 	races, err := lib.List("races")
-	if err != nil || len(races) != 3 || races[0].ID != "emberkin" || races[1].ID != "stonefolk" || races[2].ID != "tiefling" {
-		t.Errorf("races = %+v (err %v), want emberkin, stonefolk and tiefling", races, err)
+	if err != nil || len(races) != 2 || races[0].ID != "emberkin" || races[1].ID != "stonefolk" {
+		t.Errorf("races = %+v (err %v), want emberkin and stonefolk", races, err)
 	}
 	// Its traits are not races.
 	if _, err := lib.Lookup("races", "emberkin_fire_resistance"); !isNotFoundErr(err) {

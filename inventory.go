@@ -29,6 +29,7 @@ func round2(f float64) float64 { return math.Round(f*100) / 100 }
 
 // resolveInvItem finds the item for an inventory entry. An inline Custom item wins over item_id.
 // Custom items without an id get one derived from the entry, so modifier sources stay distinct.
+// The entry's tags are applied to the result.
 func resolveInvItem(lib Library, inv InventoryItem, index int) (Item, error) {
 	if inv.Custom != nil {
 		it := *inv.Custom
@@ -39,12 +40,16 @@ func resolveInvItem(lib Library, inv InventoryItem, index int) (Item, error) {
 				it.ID = fmt.Sprintf("custom:%d", index)
 			}
 		}
-		return it, nil
+		return applyItemTags(it, inv.Tags), nil
 	}
 	if inv.ItemID == "" {
 		return Item{}, fmt.Errorf("inventory entry %d has neither item_id nor custom", index+1)
 	}
-	return lib.Item(inv.ItemID)
+	it, err := lib.Item(inv.ItemID)
+	if err != nil {
+		return Item{}, err
+	}
+	return applyItemTags(it, inv.Tags), nil
 }
 
 // encumbranceModifiers are the variant-rule penalties: -10 speed when encumbered; -20 speed and
@@ -103,6 +108,11 @@ func computeInventory(c Character, lib Library, rules Ruleset, k0 *calc) invento
 			}
 			res.warnings = append(res.warnings, mkWarning(WarnUnknownID, ref, "", "", ref,
 				fmt.Sprintf("inventory item %q could not be resolved: %v", ref, err)))
+		}
+		if err == nil {
+			if msg := itemTagProblem(it, inv.Tags); msg != "" {
+				res.warnings = append(res.warnings, mkWarning(WarnBadItemTag, it.ID, "", "", it.ID, msg))
+			}
 		}
 		if inv.ID != "" {
 			if _, dup := byID[inv.ID]; dup {
@@ -287,7 +297,7 @@ func computeInventory(c Character, lib Library, rules Ruleset, k0 *calc) invento
 		v := InventoryView{
 			EntryID: e.inv.ID, ItemID: e.inv.ItemID, Quantity: e.inv.Quantity,
 			Equipped: e.inv.Equipped, Attuned: e.inv.Attuned, Stashed: e.inv.Stashed,
-			Container: e.inv.Container, Counted: counted[i], Notes: e.inv.Notes, Custom: e.inv.Custom != nil,
+			Container: e.inv.Container, Counted: counted[i], Notes: e.inv.Notes, Custom: e.inv.Custom != nil, Tags: e.inv.Tags,
 		}
 		if e.ok {
 			v.Name = e.item.Name

@@ -1,6 +1,6 @@
 package character
 
-// warlock_test.go - tests for content/warlock, layered on top of content/example.
+// warlock_test.go - tests for the Warlock in content/classes, layered on top of content/example.
 // They skip themselves if either folder is missing. Written without being able to run them:
 // a failure may be a test mistake as much as a code bug.
 
@@ -11,16 +11,16 @@ import (
 
 func loadWarlockLib(t *testing.T) *ContentLibrary {
 	t.Helper()
-	loadExample(t) // skips if the example pack is missing: the warlock pack uses its skills
-	if _, err := os.Stat("content/warlock"); err != nil {
-		t.Skip("content/warlock not found: copy the content folder next to the Go files to run this test")
+	loadExample(t) // skips if the example pack is missing: the classes pack uses its skills
+	if _, err := os.Stat("content/classes"); err != nil {
+		t.Skip("content/classes not found: copy the content folder next to the Go files to run this test")
 	}
-	lib, err := LoadDirs(LoadOptions{Strict: true}, "content/example", "content/warlock")
+	lib, err := LoadDirs(LoadOptions{Strict: true}, "content/example", "content/classes")
 	if err != nil {
 		if lib != nil {
 			dumpIssues(t, lib)
 		}
-		t.Fatalf("the example and warlock packs failed to load together: %v", err)
+		t.Fatalf("the example and classes packs failed to load together: %v", err)
 	}
 	return lib
 }
@@ -278,8 +278,8 @@ func TestWarlockLevelOneInvocation(t *testing.T) {
 
 func TestHomebrewInvocationJoinsThePoolJustByBeingTagged(t *testing.T) {
 	loadExample(t)
-	if _, err := os.Stat("content/warlock"); err != nil {
-		t.Skip("content/warlock not found")
+	if _, err := os.Stat("content/classes"); err != nil {
+		t.Skip("content/classes not found")
 	}
 	homebrew := memPack("homebrew", map[string]string{
 		"features/gills.json": `{"id":"gills_of_the_deep","name":"Gills of the Deep","origin":"class",
@@ -288,7 +288,7 @@ func TestHomebrewInvocationJoinsThePoolJustByBeingTagged(t *testing.T) {
 	})
 	lib := mustLoad(t, LoadOptions{},
 		PackSource{Name: "example", FS: os.DirFS("content/example")},
-		PackSource{Name: "warlock", FS: os.DirFS("content/warlock")},
+		PackSource{Name: "classes", FS: os.DirFS("content/classes")},
 		homebrew)
 
 	opts, err := ChoiceOptions(warlockFixture(), lib, Ruleset{}, "eldritch_invocations_2", "invocations")

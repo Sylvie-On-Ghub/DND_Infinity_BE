@@ -6,6 +6,7 @@ package character
 import (
 	"encoding/json"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -500,14 +501,14 @@ func TestPatchEntry(t *testing.T) {
 		return m
 	}
 
-	if err := PatchEntry(&c, rope, patch(`{"equipped":true,"notes":"frayed","container":"`+bp+`"}`)); err != nil {
+	if err := PatchEntry(&c, lib, rope, patch(`{"equipped":true,"notes":"frayed","container":"`+bp+`"}`)); err != nil {
 		t.Fatal(err)
 	}
 	e := c.Inventory[entryIndex(&c, rope)]
 	if !e.Equipped || e.Notes != "frayed" || e.Container != bp {
 		t.Errorf("entry = %+v, want equipped, noted and inside the backpack", e)
 	}
-	PatchEntry(&c, rope, patch(`{"container":null,"notes":null}`))
+	PatchEntry(&c, lib, rope, patch(`{"container":null,"notes":null}`))
 	e = c.Inventory[entryIndex(&c, rope)]
 	if e.Container != "" || e.Notes != "" {
 		t.Errorf("null should clear fields: %+v", e)
@@ -522,14 +523,14 @@ func TestPatchEntry(t *testing.T) {
 		"self container":    `{"container":"` + rope + `"}`,
 	}
 	for name, body := range bad {
-		if err := PatchEntry(&c, rope, patch(body)); !isBadRequest(err) {
+		if err := PatchEntry(&c, lib, rope, patch(body)); !isBadRequest(err) {
 			t.Errorf("%s: err = %v, want a bad request", name, err)
 		}
 	}
-	if after := c.Inventory[entryIndex(&c, rope)]; after != before {
+	if after := c.Inventory[entryIndex(&c, rope)]; !reflect.DeepEqual(after, before) {
 		t.Errorf("rejected patches changed the entry: %+v -> %+v", before, after)
 	}
-	if err := PatchEntry(&c, "nope", patch(`{"notes":"x"}`)); !isNotFoundErr(err) {
+	if err := PatchEntry(&c, lib, "nope", patch(`{"notes":"x"}`)); !isNotFoundErr(err) {
 		t.Errorf("unknown entry: err = %v, want not found", err)
 	}
 }
@@ -549,7 +550,7 @@ func TestPatchCustomEntry(t *testing.T) {
 		return m
 	}
 
-	if err := PatchEntry(&c, box, patch(`{"custom":{"name":"Silver Idol","weight":2,"cost":null},"notes":"from the crypt"}`)); err != nil {
+	if err := PatchEntry(&c, lib, box, patch(`{"custom":{"name":"Silver Idol","weight":2,"cost":null},"notes":"from the crypt"}`)); err != nil {
 		t.Fatal(err)
 	}
 	it := c.Inventory[entryIndex(&c, box)].Custom
@@ -565,14 +566,14 @@ func TestPatchCustomEntry(t *testing.T) {
 		"not an object":      `{"custom":"idol"}`,
 	}
 	for name, body := range bad {
-		if err := PatchEntry(&c, box, patch(body)); !isBadRequest(err) {
+		if err := PatchEntry(&c, lib, box, patch(body)); !isBadRequest(err) {
 			t.Errorf("%s: err = %v, want a bad request", name, err)
 		}
 	}
 	if after := *c.Inventory[entryIndex(&c, box)].Custom; after.Name != before.Name || after.Weight != before.Weight {
 		t.Errorf("rejected patches changed the item: %+v -> %+v", before, after)
 	}
-	if err := PatchEntry(&c, rope, patch(`{"custom":{"weight":1}}`)); !isBadRequest(err) {
+	if err := PatchEntry(&c, lib, rope, patch(`{"custom":{"weight":1}}`)); !isBadRequest(err) {
 		t.Errorf("patching custom on a library item: err = %v, want a bad request", err)
 	}
 }

@@ -113,23 +113,42 @@ const (
 	TargetDamageSpell      = "damage.spell"
 )
 
-func AbilityTarget(a Ability) string      { return "ability." + string(a) } // the score itself
-func CheckTarget(a Ability) string        { return "check." + string(a) }   // raw ability checks
-func SaveTarget(a Ability) string         { return "save." + string(a) }
-func SkillTarget(skillID string) string   { return "skill." + skillID }
-func PassiveTarget(skillID string) string { return "passive." + skillID }
-func SpeedTarget(s SpeedType) string      { return "speed." + string(s) }
-func SenseTarget(name string) string      { return "sense." + name }       // adds to range
-func ResistTarget(d DamageType) string    { return "resist." + string(d) } // ModSet/flag style
-func ImmuneTarget(d DamageType) string    { return "immune." + string(d) }
-func VulnTarget(d DamageType) string      { return "vuln." + string(d) }
+func CantripDamageTarget(classID string) string { return "damage.cantrip." + classID } // that class's cantrips only
+func CantripsKnownTarget(classID string) string { return "spell.cantrips." + classID } // extra cantrips that class knows
+func AbilityTarget(a Ability) string            { return "ability." + string(a) }      // the score itself
+func CheckTarget(a Ability) string              { return "check." + string(a) }        // raw ability checks
+func SaveTarget(a Ability) string               { return "save." + string(a) }
+func SkillTarget(skillID string) string         { return "skill." + skillID }
+func PassiveTarget(skillID string) string       { return "passive." + skillID }
+func SpeedTarget(s SpeedType) string            { return "speed." + string(s) }
+func SenseTarget(name string) string            { return "sense." + name }       // adds to range
+func ResistTarget(d DamageType) string          { return "resist." + string(d) } // ModSet/flag style
+func ImmuneTarget(d DamageType) string          { return "immune." + string(d) }
+func VulnTarget(d DamageType) string            { return "vuln." + string(d) }
 
 // Modifier is the single general-purpose modifier. Everything that tweaks a
 // derived number or reminds the player of a situational rule is one of these.
+// What a Modifier can require. The armour ones switch it on or off for the whole sheet; the weapon ones
+// apply it only to the attacks that qualify.
+const (
+	RequiresArmour          = "armour"                    // a suit of armour is equipped; a shield doesn't count
+	RequiresNoHeavyOrShield = "no_heavy_armour_or_shield" // no heavy armour and no shield is equipped
+	RequiresOneWeapon       = "one_handed_melee_alone"    // a melee weapon that isn't two-handed, with no other weapon equipped
+	RequiresThrown          = "thrown_weapon"             // an attack made by throwing a weapon
+	RequiresMeleeWeapon     = "melee_weapon"              // an attack made with a melee weapon, so not an unarmed strike
+	RequiresWeapon          = "weapon"                    // an attack made with any weapon, melee, ranged or thrown
+)
+
 type Modifier struct {
 	Target string  `json:"target"`
 	Kind   ModKind `json:"kind"`
-	Value  int     `json:"value,omitempty"`
+	Value  int     `json:"value,omitempty"` // with ValueAbility set, the minimum
+	// ValueAbility uses an ability modifier as the value ("add your Charisma modifier, minimum +1").
+	ValueAbility Ability `json:"value_ability,omitempty"`
+	// ValueSpeed uses one of the character's speeds as the value ("a swimming speed equal to your speed").
+	ValueSpeed SpeedType `json:"value_speed,omitempty"`
+	// Requires limits the modifier to certain equipment: one of the Requires constants.
+	Requires string `json:"requires,omitempty"`
 	// Dice makes this a "dice rider" (Sneak Attack 3d6, Hunter's Mark 1d6, Bless 1d4). Only meaningful with
 	// Kind ModAdd. Riders are never summed into flat numbers; on attack/damage targets they are listed on the
 	// matching attack entries, elsewhere they surface in Sheet.Notes.
@@ -158,6 +177,9 @@ type AttackDetails struct {
 	Properties  []string   `json:"properties,omitempty"`  // finesse, versatile, ...
 	Ranged      bool       `json:"ranged,omitempty"`      // uses ranged targets and Dex by default
 	FlatDamage  int        `json:"flat_damage,omitempty"` // fixed damage with no dice (unarmed strike deals 1)
+	// Range when a melee weapon with the thrown property is thrown.
+	ThrownNormal int `json:"thrown_normal,omitempty"`
+	ThrownLong   int `json:"thrown_long,omitempty"`
 }
 
 type Action struct {
@@ -171,6 +193,8 @@ type Action struct {
 	// and the id of that feature's limited-use resource in Sheet.Resources, if it has one.
 	FeatureID  string `json:"feature_id,omitempty"`
 	ResourceID string `json:"resource_id,omitempty"`
+	// ResourceFrom is set in content: the action spends another feature's resource (a subclass's Channel Divinity option).
+	ResourceFrom string `json:"resource_from,omitempty"`
 }
 
 type Resource struct {
@@ -178,7 +202,10 @@ type Resource struct {
 	Max  int    `json:"max"` // with MaxAbility set, the minimum
 	// MaxAbility scales uses with an ability modifier ("uses equal to your Charisma modifier").
 	MaxAbility Ability      `json:"max_ability,omitempty"`
+	MaxBonus   int          `json:"max_bonus,omitempty"` // added to the modifier ("1 + your Charisma modifier")
 	Recharge   RechargeType `json:"recharge"`
+	// ShortRestRegain is how many uses a Short Rest gives back when Recharge is a longer rest.
+	ShortRestRegain int `json:"short_rest_regain,omitempty"`
 }
 
 // Feature covers class features, racial traits, feats and background features.
@@ -264,6 +291,10 @@ type Choice struct {
 	Points       int `json:"points,omitempty"`
 	MaxPerOption int `json:"max_per_option,omitempty"`
 }
+
+// SkillReplacementChoice is the choice id on a background whose skills the character already has from
+// elsewhere. It appears in pending_choices only then.
+const SkillReplacementChoice = "skill_replacement"
 
 // Selection is what the character actually picked. Stored; flat; keyed by feature + choice.
 type Selection struct {
@@ -379,17 +410,18 @@ type AbilityScore struct {
 }
 
 type InventoryItem struct {
-	ItemID          string  `json:"item_id"`
-	Quantity        int     `json:"quantity"`
-	Equipped        bool    `json:"equipped"`
-	Attuned         bool    `json:"attuned"`
-	AbilityOverride Ability `json:"ability_override,omitempty"` // weapon attacks: force an ability (Monk, Pact of the Blade...)
-	Proficient      bool    `json:"proficient,omitempty"`       // weapon attacks: proficient with this weapon whatever the character's weapon_profs (Pact of the Blade)
-	ID              string  `json:"id,omitempty"`               // instance id; needed if something is stored inside this entry
-	Container       string  `json:"container,omitempty"`        // id of the entry this one is stored in
-	Stashed         bool    `json:"stashed,omitempty"`          // left behind (home, a mount): not counted in carried weight
-	Custom          *Item   `json:"custom,omitempty"`           // a one-off item defined inline; used instead of item_id when set
-	Notes           string  `json:"notes,omitempty"`
+	ItemID          string   `json:"item_id"`
+	Quantity        int      `json:"quantity"`
+	Equipped        bool     `json:"equipped"`
+	Attuned         bool     `json:"attuned"`
+	AbilityOverride Ability  `json:"ability_override,omitempty"` // weapon attacks: force an ability (Monk, Pact of the Blade...)
+	Proficient      bool     `json:"proficient,omitempty"`       // weapon attacks: proficient with this weapon whatever the character's weapon_profs (Pact of the Blade)
+	ID              string   `json:"id,omitempty"`               // instance id; needed if something is stored inside this entry
+	Container       string   `json:"container,omitempty"`        // id of the entry this one is stored in
+	Stashed         bool     `json:"stashed,omitempty"`          // left behind (home, a mount): not counted in carried weight
+	Custom          *Item    `json:"custom,omitempty"`           // a one-off item defined inline; used instead of item_id when set
+	Tags            []string `json:"tags,omitempty"`             // weapons and armour: variations such as "silvered" or "+1"
+	Notes           string   `json:"notes,omitempty"`
 }
 
 // Details are the descriptive parts of a character: free text, never read by the rules engine.
@@ -415,6 +447,7 @@ type Details struct {
 
 type Character struct {
 	ID           string  `json:"id"`
+	Version      int     `json:"version,omitempty"` // set by the store; PUT and PATCH must send the version they read
 	Name         string  `json:"name"`
 	RaceID       string  `json:"race_id"`
 	BackgroundID string  `json:"background_id"`
@@ -490,6 +523,7 @@ type ToolView struct {
 }
 
 type Sheet struct {
+	Version          int                     `json:"version,omitempty"` // the character's version; filled in by the API, not by Compute
 	Level            int                     `json:"level"`
 	ProficiencyBonus int                     `json:"proficiency_bonus"`
 	MaxHP            int                     `json:"max_hp"` // sum(RolledHP) + level*conMod + modifiers
@@ -560,8 +594,8 @@ const (
 	ItemOther  ItemKind = "other"
 )
 
-// Item is library data. A shield is an ItemShield with Modifiers {ac add 2}; magic armour adds its
-// bonus as a modifier on the armour item; heavy armour has an ACFormula with no terms.
+// Item is library data. A shield is an ItemShield with Modifiers {ac add 2}; heavy armour has an
+// ACFormula with no terms. Plain +X and silvered gear isn't a separate item: see itemtags.go.
 type Item struct {
 	ID                 string        `json:"id"`
 	Name               string        `json:"name"`
@@ -604,14 +638,14 @@ type ACBreakdown struct {
 // Weapons and attacks
 // ---------------------------------------------------------------------------
 
-// WeaponStats hangs off Item.Weapon. The inherent magic bonus lives here (not in general modifiers),
-// so +1 weapons are self-contained. Melee vs ranged comes from Attack.Ranged.
+// WeaponStats hangs off Item.Weapon. The inherent magic bonus of a named magic weapon lives here (not
+// in general modifiers), and a +X tag adds to it. Melee vs ranged comes from Attack.Ranged.
 type WeaponStats struct {
 	Category      string        `json:"category"`                 // "simple" | "martial" | "other"
 	Attack        AttackDetails `json:"attack"`                   // dice, damage type, range, properties
 	VersatileDice string        `json:"versatile_dice,omitempty"` // e.g. "1d10" when held two-handed
 	MagicBonus    int           `json:"magic_bonus,omitempty"`    // applies to hit and damage; needs attunement if the item does
-	BaseWeapon    string        `json:"base_weapon,omitempty"`    // item id this is a variant of (silvered, +1); proficiency with it counts
+	BaseWeapon    string        `json:"base_weapon,omitempty"`    // item id this is a variant of (a named magic longsword); proficiency with it counts
 }
 
 // Rider is a dice bonus attached to an attack ("+1d6 Hunter's Mark", "+1d4 Bless").
@@ -678,6 +712,8 @@ type ResourceView struct {
 	Used      int          `json:"used"`
 	Remaining int          `json:"remaining"`
 	Recharge  RechargeType `json:"recharge"`
+	// ShortRestRegain is how many uses a Short Rest gives back when Recharge is a longer rest.
+	ShortRestRegain int `json:"short_rest_regain,omitempty"`
 }
 
 // SpellcastingDef is only a definition for now; slots, spells and DCs come with the spells work.
@@ -691,7 +727,7 @@ type SpellcastingDef struct {
 	StartLevel      int      `json:"start_level,omitempty"`      // class level when casting begins; 0 => 1 (Paladin/Ranger 2, third-casters 3)
 	Prep            string   `json:"prep,omitempty"`             // PrepKnown (default), PrepPrepared (from the class list), PrepBook (spellbook)
 	CantripsKnown   []int    `json:"cantrips_known,omitempty"`   // by class level; empty = not enforced
-	SpellsKnown     []int    `json:"spells_known,omitempty"`     // by class level, for PrepKnown casters; empty = not enforced
+	SpellsKnown     []int    `json:"spells_known,omitempty"`     // by class level, for PrepKnown casters, or prepared casters with no PreparedFormula; empty = not enforced
 	PreparedFormula *Formula `json:"prepared_formula,omitempty"` // PrepPrepared/PrepBook, e.g. mod.wis + class_level.cleric
 }
 
@@ -922,6 +958,7 @@ type InventoryView struct {
 	Notes              string        `json:"notes,omitempty"`
 	RequiresAttunement bool          `json:"requires_attunement,omitempty"`
 	Custom             bool          `json:"custom,omitempty"`
+	Tags               []string      `json:"tags,omitempty"`
 	Unknown            bool          `json:"unknown,omitempty"` // item id not found in the library
 }
 

@@ -1,9 +1,11 @@
 // contentcheck loads one or more content packs and reports every problem it finds.
 //
+//	go run ./cmd/contentcheck
 //	go run ./cmd/contentcheck content/example
 //	go run ./cmd/contentcheck content/core content/homebrew
 //
-// Packs load in the order given; later packs override earlier ones by id.
+// Packs load in the order given; later packs override earlier ones by id. With none given it checks
+// every pack in content/, as the server loads them by default.
 // Exit status: 0 = no errors (warnings are fine), 1 = content errors, 2 = couldn't load at all.
 package main
 
@@ -16,12 +18,16 @@ import (
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: contentcheck <pack dir> [<pack dir> ...]")
-		os.Exit(2)
+	dirs := os.Args[1:]
+	if len(dirs) == 0 {
+		var err error
+		if dirs, err = character.FindPacks("content"); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(2)
+		}
 	}
 
-	lib, err := character.LoadDirs(character.LoadOptions{}, os.Args[1:]...)
+	lib, err := character.LoadDirs(character.LoadOptions{}, dirs...)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(2)

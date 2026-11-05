@@ -21,6 +21,7 @@ package character
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -144,10 +145,12 @@ type gathered struct {
 
 	acFormulas []ACFormula // from features and worn armour
 	armourWorn bool
+	heavyWorn  bool
 	shieldWorn bool
 
 	weaponItems []weaponEntry
 
+	skillGrants map[string]int   // skill id -> how many grants made it trained, to spot overlaps
 	saves       map[Ability]bool // save proficiencies granted by class or features
 	classLevels map[string]int   // class id -> level, for class_level.<id> formula terms
 	casters     []casterEntry
@@ -160,6 +163,9 @@ type gathered struct {
 func (g *gathered) addGrants(gr Grants) {
 	for id, l := range gr.Skills {
 		g.skills[id] = maxLevel(g.skills[id], l)
+		if l == ProfTrained {
+			g.skillGrants[id]++
+		}
 	}
 	for id, l := range gr.Tools {
 		g.tools[id] = maxLevel(g.tools[id], l)
@@ -265,6 +271,7 @@ func bestTier(tiers []Tier, level int) *Tier {
 func gather(c Character, lib Library, totalLevel int) *gathered {
 	g := &gathered{
 		skills:      map[string]ProficiencyLevel{},
+		skillGrants: map[string]int{},
 		tools:       map[string]ProficiencyLevel{},
 		saves:       map[Ability]bool{},
 		classLevels: map[string]int{},
@@ -346,11 +353,86 @@ func gather(c Character, lib Library, totalLevel int) *gathered {
 		}
 	}
 
+	g.applySkillReplacement(c, lib) // before items, whose skills aren't a reason to replace one
 	g.applyInventory(c, lib)
 	for i := range g.views {
 		g.views[i].ResourceID = g.resOf[g.views[i].FeatureID]
 	}
+	for i := range g.actions {
+		if from := g.actions[i].ResourceFrom; from != "" {
+			g.actions[i].ResourceID, g.actions[i].ResourceFrom = g.resOf[from], ""
+		}
+	}
 	return g
+}
+
+// backgroundSkillConflicts lists, in order, the skills a background gives that the character also
+// has from somewhere else. Expertise on a skill isn't a conflict: it needs the skill to be there.
+func (g *gathered) backgroundSkillConflicts(c Character, f Feature) []string {
+	own := map[string]int{}
+	for id, l := range f.Grants.Skills {
+		if l == ProfTrained {
+			own[id]++
+		}
+	}
+	for _, ch := range f.Choices {
+		sel, ok := findSelection(c.Selections, f.ID, ch.ID)
+		if ok && ch.Filter != nil && ch.Filter.Type == "skill" && (ch.GrantLevel == "" || ch.GrantLevel == ProfTrained) {
+			for _, id := range sel.Picked {
+				own[id]++
+			}
+		}
+	}
+	var out []string
+	for _, id := range sortedKeys(own) {
+		if g.skillGrants[id] > 1 || rank(c.Skills[id]) >= rank(ProfTrained) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// skillReplacementChoice is the choice a background has when its skills overlap others: any skill, one
+// per overlap. It isn't in the content, because it depends on the character.
+func skillReplacementChoice(prompt string, count int) Choice {
+	return Choice{ID: SkillReplacementChoice, Prompt: prompt, Kind: ChoicePick, Count: count, Filter: &PoolFilter{Type: "skill"}}
+}
+
+// applySkillReplacement runs once everything else is gathered, because the overlapping skill can come
+// from anywhere. A replacement stops applying if the overlap goes away, and the selection stays stored
+// in case it comes back.
+func (g *gathered) applySkillReplacement(c Character, lib Library) {
+	if c.BackgroundID == "" {
+		return
+	}
+	f, err := lib.Feature(c.BackgroundID)
+	if err != nil {
+		return
+	}
+	conflicts := g.backgroundSkillConflicts(c, f)
+	if len(conflicts) == 0 {
+		return
+	}
+	names := map[string]string{}
+	for _, sd := range lib.Skills() {
+		names[sd.ID] = sd.Name
+	}
+	for i, id := range conflicts {
+		if names[id] != "" {
+			conflicts[i] = names[id]
+		}
+	}
+	prompt := fmt.Sprintf("You already have %s from elsewhere. Choose another skill to replace it", conflicts[0])
+	if len(conflicts) > 1 {
+		prompt = fmt.Sprintf("You already have %s from elsewhere. Choose %d other skills to replace them", strings.Join(conflicts, ", "), len(conflicts))
+	}
+	ch := skillReplacementChoice(prompt, len(conflicts))
+	sel, ok := findSelection(c.Selections, f.ID, ch.ID)
+	if !ok {
+		g.pending = append(g.pending, PendingChoice{FeatureID: f.ID, ChoiceID: ch.ID, Prompt: ch.Prompt, Remaining: ch.Count})
+		return
+	}
+	g.applyChoice(f, ch, sel)
 }
 
 func findSelection(sels []Selection, featureID, choiceID string) (Selection, bool) {
@@ -694,6 +776,68 @@ func baseFeatureID(id string) string {
 // Phase 2: stacking
 // ---------------------------------------------------------------------------
 
+// activeMods leaves out modifiers whose armour requirement isn't met. Weapon requirements are checked
+// attack by attack, and anything else isn't a requirement the engine knows, so it warns and doesn't apply.
+func activeMods(g *gathered) []Modifier {
+	return slices.DeleteFunc(slices.Clone(g.mods), func(m Modifier) bool {
+		switch m.Requires {
+		case "", RequiresOneWeapon, RequiresThrown, RequiresMeleeWeapon, RequiresWeapon:
+			return false
+		case RequiresArmour:
+			return !g.armourWorn
+		case RequiresNoHeavyOrShield:
+			return g.heavyWorn || g.shieldWorn
+		}
+		g.warnings = append(g.warnings, mkWarning(WarnUnknownRequires, m.SourceID, "", m.Target, m.Requires,
+			fmt.Sprintf("modifier on %q requires %q, which isn't recognised, so it has no effect", m.Target, m.Requires)))
+		return true
+	})
+}
+
+// resolveSpeedValues turns modifiers valued by a speed into plain numbers, with speeds read without them.
+func resolveSpeedValues(mods []Modifier) []Modifier {
+	plain := slices.DeleteFunc(slices.Clone(mods), func(m Modifier) bool { return m.ValueSpeed != "" })
+	if len(plain) == len(mods) {
+		return mods
+	}
+	k := newCalc(plain)
+	out := slices.Clone(mods)
+	for i, m := range out {
+		if m.ValueSpeed != "" {
+			out[i].Value = max(m.Value, k.apply(SpeedTarget(m.ValueSpeed), 0))
+		}
+	}
+	return out
+}
+
+// resolveAbilityValues turns modifiers valued by an ability into plain numbers, so everything later
+// treats them like any other. Scores are read with those modifiers left out, which rules out loops; the
+// loader rejects one that targets an ability score.
+func resolveAbilityValues(c Character, mods []Modifier) []Modifier {
+	plain := make([]Modifier, 0, len(mods))
+	for _, m := range mods {
+		if m.ValueAbility == "" {
+			plain = append(plain, m)
+		}
+	}
+	if len(plain) == len(mods) {
+		return mods
+	}
+	k := newCalc(plain)
+	out := make([]Modifier, len(mods))
+	for i, m := range mods {
+		if m.ValueAbility != "" {
+			score := 10 // missing ability defaults to 10 rather than 0
+			if st, ok := c.Abilities[m.ValueAbility]; ok {
+				score = st.Score
+			}
+			m.Value = max(m.Value, floorMod(k.apply(AbilityTarget(m.ValueAbility), score)))
+		}
+		out[i] = m
+	}
+	return out
+}
+
 // dedupe implements "same named source doesn't stack". Modifiers sharing
 // (Target, Kind, SourceID, Condition, Note) collapse to one, keeping the highest Value.
 // Empty SourceID or AllowStack opts out. (Open question: for penalties, "best" arguably means
@@ -775,6 +919,12 @@ func validTarget(t string, skillIDs map[string]bool) bool {
 		return isSpeed(rest)
 	case "sense", "resist", "immune", "vuln":
 		return rest != ""
+	case "damage":
+		class, ok := strings.CutPrefix(rest, "cantrip.")
+		return ok && class != ""
+	case "spell":
+		class, ok := strings.CutPrefix(rest, "cantrips.")
+		return ok && class != ""
 	}
 	return false
 }
@@ -784,15 +934,51 @@ func validTarget(t string, skillIDs map[string]bool) bool {
 // ---------------------------------------------------------------------------
 
 type calc struct {
-	byTarget map[string][]Modifier
+	byTarget   map[string][]Modifier
+	weaponMods []Modifier // only apply to attacks that meet their requirement
 }
 
 func newCalc(mods []Modifier) *calc {
 	k := &calc{byTarget: map[string][]Modifier{}}
 	for _, m := range mods {
+		if weaponRequirement(m.Requires) {
+			k.weaponMods = append(k.weaponMods, m)
+			continue
+		}
 		k.byTarget[m.Target] = append(k.byTarget[m.Target], m)
 	}
 	return k
+}
+
+func weaponRequirement(r string) bool {
+	return r == RequiresOneWeapon || r == RequiresThrown || r == RequiresMeleeWeapon || r == RequiresWeapon
+}
+
+// weaponRiders lists the weapon-only dice riders on these targets that an attack meeting qualifies gets.
+func (k *calc) weaponRiders(qualifies []string, targets ...string) []Rider {
+	var out []Rider
+	for _, m := range k.weaponMods {
+		if m.Kind == ModAdd && diceRe.MatchString(m.Dice) && contains(targets, m.Target) && contains(qualifies, m.Requires) {
+			out = append(out, Rider{Dice: m.Dice, Condition: m.Condition, Note: m.Note, Source: m.SourceID})
+		}
+	}
+	return out
+}
+
+// weaponSum adds the weapon-only modifiers on these targets that an attack meeting qualifies gets.
+func (k *calc) weaponSum(qualifies []string, targets ...string) int {
+	total := 0
+	for _, m := range k.weaponMods {
+		if m.Kind == ModAdd && m.Condition == "" && m.Dice == "" && contains(targets, m.Target) && contains(qualifies, m.Requires) {
+			total += m.Value
+		}
+	}
+	return total
+}
+
+// wantsWeapon reports whether any modifier depends on this weapon requirement.
+func (k *calc) wantsWeapon(requirement string) bool {
+	return slices.ContainsFunc(k.weaponMods, func(m Modifier) bool { return m.Requires == requirement })
 }
 
 // apply resolves one target: Set (highest wins) -> sum of Add -> Min as a floor.
@@ -885,11 +1071,11 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 		totalLevel += cl.Level
 	}
 	g := gather(c, lib, totalLevel)
-	mods := dedupe(g.mods)
+	mods := dedupe(resolveAbilityValues(c, activeMods(g)))
 
 	// Inventory and carrying are worked out first: variant encumbrance comes back as ordinary modifiers.
 	invRes := computeInventory(c, lib, rules, newCalc(mods))
-	mods = dedupe(append(mods, invRes.mods...))
+	mods = dedupe(resolveSpeedValues(append(mods, invRes.mods...)))
 	k := newCalc(mods)
 
 	skillDefs := lib.Skills()
@@ -1059,8 +1245,8 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 	resources := []ResourceView{}
 	for _, re := range g.resources {
 		used := c.ResourceUsed[re.featureID]
-		if re.res.MaxAbility != "" && modOf[re.res.MaxAbility] > re.res.Max {
-			re.res.Max = modOf[re.res.MaxAbility]
+		if re.res.MaxAbility != "" && modOf[re.res.MaxAbility]+re.res.MaxBonus > re.res.Max {
+			re.res.Max = modOf[re.res.MaxAbility] + re.res.MaxBonus
 		}
 		remaining := re.res.Max - used
 		if remaining < 0 {
@@ -1070,7 +1256,7 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 		}
 		resources = append(resources, ResourceView{
 			FeatureID: re.featureID, Name: re.res.Name, Max: re.res.Max,
-			Used: used, Remaining: remaining, Recharge: re.res.Recharge,
+			Used: used, Remaining: remaining, Recharge: re.res.Recharge, ShortRestRegain: re.res.ShortRestRegain,
 		})
 	}
 
@@ -1228,6 +1414,7 @@ func (g *gathered) applyInventory(c Character, lib Library) {
 		case ItemArmour:
 			armourCount++
 			g.armourWorn = true
+			g.heavyWorn = g.heavyWorn || contains(it.Tags, "heavy_armour")
 			if it.ACFormula != nil {
 				g.acFormulas = append(g.acFormulas, *it.ACFormula)
 			}
@@ -1238,6 +1425,7 @@ func (g *gathered) applyInventory(c Character, lib Library) {
 			if it.Weapon != nil {
 				g.weaponItems = append(g.weaponItems, weaponEntry{
 					item:            it,
+					quantity:        inv.Quantity,
 					abilityOverride: inv.AbilityOverride,
 					proficient:      inv.Proficient,
 					active:          !it.RequiresAttunement || inv.Attuned,
@@ -1461,7 +1649,10 @@ func computeAC(c Character, g *gathered, lib Library, rules Ruleset, k *calc, mo
 // Weapons, attacks and dice riders
 // ---------------------------------------------------------------------------
 
-const WarnBadDice WarningCode = "bad_dice"
+const (
+	WarnBadDice         WarningCode = "bad_dice"
+	WarnUnknownRequires WarningCode = "unknown_requires"
+)
 
 var diceRe = regexp.MustCompile(`^[1-9][0-9]*d[1-9][0-9]*$`)
 
@@ -1490,6 +1681,7 @@ func (k *calc) riders(targets ...string) []Rider {
 
 type weaponEntry struct {
 	item            Item
+	quantity        int
 	abilityOverride Ability
 	proficient      bool // forced on this inventory entry
 	active          bool // false when attunement is required but missing: magic bonus is not applied
@@ -1503,6 +1695,7 @@ type attackSpec struct {
 	magic           int
 	proficient      bool
 	abilityOverride Ability
+	qualifies       []string // the weapon requirements this attack meets
 }
 
 var defaultUnarmed = WeaponStats{
@@ -1540,11 +1733,11 @@ func buildAttack(sp attackSpec, k *calc, modOf map[Ability]int, pb int) AttackVi
 
 	ab := attackAbility(sp.d, sp.abilityOverride, modOf)
 
-	toHit := modOf[ab] + sp.magic + k.sum(atkTargets...)
+	toHit := modOf[ab] + sp.magic + k.sum(atkTargets...) + k.weaponSum(sp.qualifies, atkTargets...)
 	if sp.proficient {
 		toHit += pb
 	}
-	damage := modOf[ab] + sp.magic + sp.d.FlatDamage + k.sum(dmgTargets...)
+	damage := modOf[ab] + sp.magic + sp.d.FlatDamage + k.sum(dmgTargets...) + k.weaponSum(sp.qualifies, dmgTargets...)
 
 	adv := k.flag(ModAdvantage, atkTargets...)
 	dis := k.flag(ModDisadvantage, atkTargets...)
@@ -1564,8 +1757,8 @@ func buildAttack(sp attackSpec, k *calc, modOf map[Ability]int, pb int) AttackVi
 		RangeNormal:   sp.d.RangeNormal,
 		RangeLong:     sp.d.RangeLong,
 		Properties:    sp.d.Properties,
-		AttackRiders:  k.riders(atkTargets...),
-		DamageRiders:  k.riders(dmgTargets...),
+		AttackRiders:  append(k.riders(atkTargets...), k.weaponRiders(sp.qualifies, atkTargets...)...),
+		DamageRiders:  append(k.riders(dmgTargets...), k.weaponRiders(sp.qualifies, dmgTargets...)...),
 	}
 }
 
@@ -1574,22 +1767,51 @@ func buildAttack(sp attackSpec, k *calc, modOf map[Ability]int, pb int) AttackVi
 func computeAttacks(g *gathered, rules Ruleset, k *calc, modOf map[Ability]int, pb int) []AttackView {
 	out := []AttackView{}
 
+	weaponsHeld := 0
+	for _, w := range g.weaponItems {
+		weaponsHeld += w.quantity
+	}
+
 	for _, w := range g.weaponItems {
 		ws := *w.item.Weapon
 		magic := 0
 		if w.active {
 			magic = ws.MagicBonus
 		}
-		out = append(out, buildAttack(attackSpec{
+		d := ws.Attack
+		thrown := contains(d.Properties, "thrown")
+		qualifies := []string{RequiresWeapon}
+		if !d.Ranged {
+			qualifies = append(qualifies, RequiresMeleeWeapon)
+			if !contains(d.Properties, "two-handed") && weaponsHeld == 1 {
+				qualifies = append(qualifies, RequiresOneWeapon)
+			}
+		}
+		if d.Ranged && thrown {
+			qualifies = append(qualifies, RequiresThrown)
+		}
+		spec := attackSpec{
 			name:      w.item.Name,
 			itemID:    w.item.ID,
-			d:         ws.Attack,
+			d:         d,
 			versatile: ws.VersatileDice,
 			magic:     magic,
 			proficient: w.proficient || contains(g.weapons, ws.Category) || contains(g.weapons, w.item.ID) ||
 				(ws.BaseWeapon != "" && contains(g.weapons, ws.BaseWeapon)),
 			abilityOverride: w.abilityOverride,
-		}, k, modOf, pb))
+			qualifies:       qualifies,
+		}
+		out = append(out, buildAttack(spec, k, modOf, pb))
+
+		// A melee weapon that can be thrown only gets its own thrown attack when that changes the numbers.
+		if thrown && !d.Ranged && k.wantsWeapon(RequiresThrown) {
+			spec.name += " (Thrown)"
+			spec.abilityOverride = attackAbility(d, w.abilityOverride, modOf) // throwing keeps the melee ability
+			spec.d.Ranged, spec.d.RangeNormal, spec.d.RangeLong = true, d.ThrownNormal, d.ThrownLong
+			spec.versatile = ""
+			spec.qualifies = []string{RequiresWeapon, RequiresThrown}
+			out = append(out, buildAttack(spec, k, modOf, pb))
+		}
 	}
 
 	for _, a := range g.actions {
@@ -1966,7 +2188,8 @@ type castSource struct {
 	mod          int
 	dc           int
 	attack       int
-	maxSlotLevel int // highest slot level this source can upcast to; 0 for innate sources
+	maxSlotLevel int    // highest slot level this source can upcast to; 0 for innate sources
+	classID      string // the class casting; empty for feature and item sources
 }
 
 // buildSpellView resolves one spell for a source: DC, attack bonus, scaled dice, upcasting, riders.
@@ -1995,6 +2218,9 @@ func buildSpellView(sp Spell, cs castSource, k *calc, totalLevel int, prepared b
 		var riders []Rider
 		if e.Kind == "damage" {
 			bonus += k.sum(TargetDamageSpell)
+			if sp.Level == 0 && cs.classID != "" {
+				bonus += k.sum(CantripDamageTarget(cs.classID))
+			}
 			riders = k.riders(TargetDamageSpell)
 		}
 		ev := SpellEffectView{Kind: e.Kind, Dice: dice, DamageType: e.DamageType, Bonus: bonus, Riders: riders, Note: e.Note}
@@ -2046,6 +2272,7 @@ func computeSpells(c Character, g *gathered, lib Library, rules Ruleset, k *calc
 		srcID := "class:" + ce.classID
 		pendID := "spells:" + srcID
 		cs := makeSource(def.Ability, srcID)
+		cs.classID = ce.classID
 		cs.maxSlotLevel = maxSlot
 		if def.Pact {
 			cs.maxSlotLevel = pactLevel
@@ -2111,6 +2338,9 @@ func computeSpells(c Character, g *gathered, lib Library, rules Ruleset, k *calc
 		}
 
 		cantripsAllowed := tableAt(def.CantripsKnown, ce.level)
+		if cantripsAllowed >= 0 {
+			cantripsAllowed += k.sum(CantripsKnownTarget(ce.classID))
+		}
 		spellsAllowed := -1
 		var shown []string
 		switch mode {
@@ -2125,6 +2355,8 @@ func computeSpells(c Character, g *gathered, lib Library, rules Ruleset, k *calc
 					v = 1 // a prepared caster always prepares at least one spell
 				}
 				spellsAllowed = v
+			} else {
+				spellsAllowed = tableAt(def.SpellsKnown, ce.level)
 			}
 			shown = state.Prepared
 			if mode == PrepPrepared {
