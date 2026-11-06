@@ -154,7 +154,7 @@ All of these go on the race feature or on a trait feature.
 | Bonus to a save, check, skill, AC, initiative or HP maximum | `{"target":"save.wis","kind":"add","value":1}`; other targets: `save.all`, `check.<ability>`, `check.all`, `skill.<id>`, `passive.<skill id>`, `ac`, `initiative`, `hp.max` |
 | Advantage or disadvantage | `{"target":"save.wis","kind":"advantage"}`. Add `"condition":"against being charmed"` if it is situational; a conditional modifier appears as a note and changes no number |
 | Attack or damage bonuses | targets `attack.all`, `attack.melee`, `attack.ranged`, `damage.all`, `damage.melee`, `damage.ranged`, `damage.spell`, `damage.cantrip.<class id>`; an extra-dice bonus uses `"dice":"1d6"` with kind `add` |
-| A bonus that depends on equipment | add `"requires"` to the modifier: `armour` (a shield alone doesn't count), `no_heavy_armour_or_shield`, or, on attack and damage targets, `weapon`, `melee_weapon`, `one_handed_melee_alone` or `thrown_weapon` |
+| A bonus that depends on equipment | add `"requires"` to the modifier: `armour` (a shield alone doesn't count), `no_heavy_armour_or_shield`, `no_heavy_armour`, or, on attack and damage targets, `weapon`, `melee_weapon`, `one_handed_melee_alone` or `thrown_weapon` |
 | A speed equal to another speed | `{"target":"speed.swim","kind":"min","value_speed":"walk"}` |
 | A reminder with no maths | `{"target":"check.all","kind":"note","note":"Text shown on the sheet"}` |
 | Carrying capacity doubled | grant the existing feature `powerful_build`, or `{"target":"carry_capacity","kind":"multiply","value":2}` |

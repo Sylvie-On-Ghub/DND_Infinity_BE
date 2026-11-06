@@ -1572,7 +1572,7 @@
             "type": "string"
           },
           "requires": {
-            "description": "Limits the modifier to certain equipment. armour: a suit of armour is equipped (a shield doesn't count). no_heavy_armour_or_shield: neither is equipped. one_handed_melee_alone: only on the attack of a melee weapon that isn't two-handed, with no other weapon equipped. thrown_weapon: only on attacks made by throwing a weapon. melee_weapon: only on attacks made with a melee weapon, so not an unarmed strike. weapon: only on attacks made with a weapon, melee, ranged or thrown.",
+            "description": "Limits the modifier to certain equipment. armour: a suit of armour is equipped (a shield doesn't count). no_heavy_armour_or_shield: neither is equipped. no_heavy_armour: no heavy armour is equipped, though a shield is fine. one_handed_melee_alone: only on the attack of a melee weapon that isn't two-handed, with no other weapon equipped. thrown_weapon: only on attacks made by throwing a weapon. melee_weapon: only on attacks made with a melee weapon, so not an unarmed strike. weapon: only on attacks made with a weapon, melee, ranged or thrown.",
             "type": "string"
           },
           "source_id": {

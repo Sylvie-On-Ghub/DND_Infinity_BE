@@ -687,16 +687,16 @@ func TestAPIContent(t *testing.T) {
 		Warnings int            `json:"warnings"`
 	}
 	into(t, rec, &overview)
-	if overview.Counts["classes"] != 4 || overview.Counts["skills"] != 18 || overview.Errors != 0 {
-		t.Errorf("overview = %+v, want 4 classes, 18 skills and no errors", overview)
+	if overview.Counts["classes"] != 5 || overview.Counts["skills"] != 18 || overview.Errors != 0 {
+		t.Errorf("overview = %+v, want 5 classes, 18 skills and no errors", overview)
 	}
 
 	rec = call(t, srv, http.MethodGet, "/api/content/classes", nil)
 	wantStatus(t, rec, http.StatusOK)
 	var classes []ContentSummary
 	into(t, rec, &classes)
-	if len(classes) != 4 || classes[0].ID != "cleric" || classes[1].ID != "rogue" || classes[2].ID != "warlock" || classes[3].ID != "wizard" {
-		t.Errorf("classes = %+v, want cleric, rogue, warlock and wizard sorted by id", classes)
+	if len(classes) != 5 || classes[0].ID != "barbarian" || classes[1].ID != "cleric" || classes[2].ID != "rogue" || classes[3].ID != "warlock" || classes[4].ID != "wizard" {
+		t.Errorf("classes = %+v, want barbarian, cleric, rogue, warlock and wizard sorted by id", classes)
 	}
 
 	rec = call(t, srv, http.MethodGet, "/api/content/classes/rogue", nil)
@@ -739,8 +739,8 @@ func TestAPIReloadSwapsContent(t *testing.T) {
 	rec = call(t, srv, http.MethodGet, "/api/content/classes", nil)
 	var after []ContentSummary
 	into(t, rec, &after)
-	if len(after) != 4 {
-		t.Errorf("after reload: %+v, want 4 classes", after)
+	if len(after) != 5 {
+		t.Errorf("after reload: %+v, want 5 classes", after)
 	}
 }
 
@@ -758,7 +758,7 @@ func TestAPIFailedReloadKeepsOldContent(t *testing.T) {
 	rec = call(t, srv, http.MethodGet, "/api/content/classes", nil)
 	var classes []ContentSummary
 	into(t, rec, &classes)
-	if len(classes) != 4 {
+	if len(classes) != 5 {
 		t.Errorf("a failed reload must leave the old content in place, got %+v", classes)
 	}
 }

@@ -528,7 +528,7 @@ func (v *validator) modifiers(kind, id, where string, mods []Modifier) {
 			v.err(kind, id, "%s: multiply needs a value greater than 0", at)
 		}
 		switch m.Requires {
-		case "", RequiresArmour, RequiresNoHeavyOrShield:
+		case "", RequiresArmour, RequiresNoHeavyOrShield, RequiresNoHeavy:
 		case RequiresOneWeapon, RequiresThrown, RequiresMeleeWeapon, RequiresWeapon:
 			if m.Kind != ModAdd || !(strings.HasPrefix(m.Target, "attack.") || strings.HasPrefix(m.Target, "damage.")) {
 				v.err(kind, id, "%s: requires %q only works on attack or damage targets, with kind add", at, m.Requires)
