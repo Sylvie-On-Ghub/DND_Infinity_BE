@@ -45,6 +45,18 @@ type HPAction struct {
 }
 
 func ApplyHP(c *Character, maxHP int, a HPAction) error {
+	before := c.CurrentHP
+	if err := applyHPTo(&c.CurrentHP, &c.TempHP, maxHP, a); err != nil {
+		return err
+	}
+	if a.Heal != nil && before == 0 && c.CurrentHP > 0 {
+		c.DeathSaves = [2]int{}
+	}
+	return nil
+}
+
+// applyHPTo is the HP arithmetic shared by characters and pets.
+func applyHPTo(cur, temp *int, maxHP int, a HPAction) error {
 	fields := 0
 	for _, p := range []*int{a.Damage, a.Heal, a.Temp, a.Set} {
 		if p != nil {
@@ -62,20 +74,20 @@ func ApplyHP(c *Character, maxHP int, a HPAction) error {
 		}
 		n := *a.Damage
 		absorbed := n
-		if c.TempHP < absorbed {
-			absorbed = c.TempHP
+		if *temp < absorbed {
+			absorbed = *temp
 		}
-		c.TempHP -= absorbed
+		*temp -= absorbed
 		n -= absorbed
-		c.CurrentHP -= n
-		if c.CurrentHP < 0 {
-			c.CurrentHP = 0
+		*cur -= n
+		if *cur < 0 {
+			*cur = 0
 		}
 	case a.Heal != nil:
 		if *a.Heal < 0 {
 			return badReq("heal cannot be negative")
 		}
-		before := c.CurrentHP
+		before := *cur
 		hp := before + *a.Heal
 		if hp > maxHP {
 			hp = maxHP
@@ -83,20 +95,17 @@ func ApplyHP(c *Character, maxHP int, a HPAction) error {
 		if hp < before {
 			hp = before // healing never takes HP away, even when it is already above the maximum
 		}
-		c.CurrentHP = hp
-		if before == 0 && hp > 0 {
-			c.DeathSaves = [2]int{}
-		}
+		*cur = hp
 	case a.Temp != nil:
 		if *a.Temp < 0 {
 			return badReq("temp cannot be negative")
 		}
-		c.TempHP = *a.Temp
+		*temp = *a.Temp
 	case a.Set != nil:
 		if *a.Set < 0 {
 			return badReq("set cannot be negative")
 		}
-		c.CurrentHP = *a.Set
+		*cur = *a.Set
 	}
 	return nil
 }
@@ -215,6 +224,7 @@ func ApplyRest(c *Character, sh Sheet, kind string) error {
 	switch kind {
 	case "short":
 		c.PactSlotsUsed = 0
+		c.Exhaustion = max(0, c.Exhaustion-sh.ShortRestExhaustion)
 		restoreResources(c, sh, func(r RechargeType) bool { return r == RechargeShortRest })
 		for _, r := range sh.Resources {
 			if r.Recharge != RechargeShortRest && r.ShortRestRegain > 0 {
@@ -246,6 +256,7 @@ func ApplyRest(c *Character, sh Sheet, kind string) error {
 		restoreResources(c, sh, func(r RechargeType) bool {
 			return r == RechargeShortRest || r == RechargeLongRest || r == RechargeDawn
 		})
+		restPets(c, sh)
 	default:
 		return badReq(`type must be "short" or "long"`)
 	}

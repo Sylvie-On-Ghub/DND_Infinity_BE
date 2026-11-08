@@ -112,6 +112,8 @@ const (
 	TargetDamageMelee      = "damage.melee"
 	TargetDamageRanged     = "damage.ranged"
 	TargetDamageSpell      = "damage.spell"
+	// TargetShortRestExhaustion is how many Exhaustion levels a Short Rest removes (Tireless).
+	TargetShortRestExhaustion = "rest.short.exhaustion"
 )
 
 func CantripDamageTarget(classID string) string { return "damage.cantrip." + classID } // that class's cantrips only
@@ -126,6 +128,7 @@ func SenseTarget(name string) string            { return "sense." + name }      
 func ResistTarget(d DamageType) string          { return "resist." + string(d) } // ModSet/flag style
 func ImmuneTarget(d DamageType) string          { return "immune." + string(d) }
 func VulnTarget(d DamageType) string            { return "vuln." + string(d) }
+func PetTarget(tag, target string) string       { return "pet." + tag + "." + target } // that target on pets with this tag
 
 // Modifier is the single general-purpose modifier. Everything that tweaks a
 // derived number or reminds the player of a situational rule is one of these.
@@ -232,6 +235,7 @@ type Feature struct {
 	Tags          []string       `json:"tags,omitempty"`          // labels a feature so choices can pool by tag (e.g. every eldritch invocation)
 	Repeatable    bool           `json:"repeatable,omitempty"`    // can be taken more than once (Ability Score Improvement as a feat); each pick is its own instance with its own choices
 	Spells        *SpellGrant    `json:"spells,omitempty"`        // spells this feature lets the character cast (innate casting)
+	Pets          *PetGrant      `json:"pets,omitempty"`          // creatures this feature lets the character keep as pets
 }
 
 // Grants are non-numeric things a feature (or a picked option) gives the character.
@@ -495,8 +499,9 @@ type Character struct {
 	Modifiers      []Modifier            `json:"modifiers"`               // ad hoc, character-specific
 	Inventory      []InventoryItem       `json:"inventory"`
 
+	Pets []Pet `json:"pets,omitempty"` // familiars, companions; stat blocks come from library creatures
+
 	// Linked entities, each with their own record later
-	CompanionIDs    []string `json:"companion_ids,omitempty"`
 	OrganisationIDs []string `json:"organisation_ids,omitempty"`
 }
 
@@ -559,6 +564,65 @@ type Sheet struct {
 	Languages        []string                `json:"languages"` // merged from grants
 	ArmourProfs      []string                `json:"armour_profs"`
 	WeaponProfs      []string                `json:"weapon_profs"`
+	Pets             []PetView               `json:"pets"`
+	PetSources       []PetSourceView         `json:"pet_sources"` // what the character can summon or keep as a pet
+	// ShortRestExhaustion is how many Exhaustion levels a Short Rest removes (from rest.short.exhaustion).
+	ShortRestExhaustion int `json:"short_rest_exhaustion,omitempty"`
+
+	petMods []Modifier // owner modifiers aimed at pets; read when computing pets, not part of the API
+}
+
+// PetView is a pet's computed stat block plus its play state.
+type PetView struct {
+	ID           string                  `json:"id"`
+	Name         string                  `json:"name"`
+	CreatureID   string                  `json:"creature_id"`
+	CreatureName string                  `json:"creature_name"`
+	SourceID     string                  `json:"source_id"`
+	Status       PetStatus               `json:"status"`
+	Size         string                  `json:"size"`
+	Type         string                  `json:"type"`
+	Abilities    map[Ability]AbilityView `json:"abilities"`
+	AC           int                     `json:"ac"`
+	MaxHP        int                     `json:"max_hp"`
+	CurrentHP    int                     `json:"current_hp"`
+	TempHP       int                     `json:"temp_hp"`
+	PB           int                     `json:"proficiency_bonus"`
+	Speeds       map[SpeedType]int       `json:"speeds"`
+	Senses       []Sense                 `json:"senses"`
+	Skills       map[string]SkillView    `json:"skills"`
+	Resistances  []DamageType            `json:"resistances"`
+	Immunities   []DamageType            `json:"immunities"`
+	Languages    []string                `json:"languages"`
+	Traits       []Trait                 `json:"traits"`
+	Attacks      []PetAttackView         `json:"attacks"`
+	Actions      []Action                `json:"actions"`
+	Conditions   []Condition             `json:"conditions"`
+	Notes        []Modifier              `json:"notes"`
+	Warnings     []Warning               `json:"warnings"`
+}
+
+// PetSourceView is a feature or spell the character has that grants pets, with the creatures it allows.
+type PetSourceView struct {
+	SourceID  string        `json:"source_id"`
+	Name      string        `json:"name"`
+	Kind      string        `json:"kind"` // "feature" or "spell"
+	Creatures []CreatureRef `json:"creatures"`
+	Active    int           `json:"active"` // active pets from this source
+}
+
+type CreatureRef struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type PetAttackView struct {
+	Name        string     `json:"name"`
+	Type        ActionType `json:"type"`
+	Range       string     `json:"range"` // "reach 5 ft." or "80/320 ft."
+	ToHit       int        `json:"to_hit"`
+	Damage      string     `json:"damage"` // "1d8+5 piercing"
+	Description string     `json:"description,omitempty"`
 }
 
 // ---------------------------------------------------------------------------
@@ -570,6 +634,7 @@ type Term struct {
 	Source string `json:"source"`
 	Max    *int   `json:"max,omitempty"` // cap on this term, e.g. medium armour caps mod.dex at 2
 	Div    int    `json:"div,omitempty"` // divide this term (rounding down) before capping, e.g. half class level
+	Mul    int    `json:"mul,omitempty"` // multiply this term first, e.g. five times your ranger level
 }
 
 // Formula is Base plus its Terms. Reusable beyond AC later (resource maximums, spell save DCs...).
@@ -616,6 +681,85 @@ type Item struct {
 	Rarity             string        `json:"rarity,omitempty"`
 	Tags               []string      `json:"tags,omitempty"`
 	Container          *ContainerDef `json:"container,omitempty"`
+}
+
+// ---------------------------------------------------------------------------
+// Creatures and pets
+// ---------------------------------------------------------------------------
+
+// Creature is a stat block in the library: a familiar form, a Primal Companion, a homebrew pet.
+// Any number that scales is a Formula; creature formulas may also read the owner through owner.* terms
+// (owner.mod.wis, owner.pb, owner.level, owner.class_level.<id>, owner.spell_attack, owner.spell_save_dc).
+type Creature struct {
+	ID          string                      `json:"id"`
+	Name        string                      `json:"name"`
+	Size        string                      `json:"size,omitempty"`
+	Type        string                      `json:"type,omitempty"`
+	Tags        []string                    `json:"tags,omitempty"` // "familiar", "chain_familiar", "primal_companion"
+	Abilities   map[Ability]int             `json:"abilities"`
+	AC          Formula                     `json:"ac"`
+	HP          Formula                     `json:"hp"`
+	PB          *Formula                    `json:"pb,omitempty"` // nil => 2
+	Speeds      map[SpeedType]int           `json:"speeds,omitempty"`
+	Senses      []Sense                     `json:"senses,omitempty"`
+	Saves       []Ability                   `json:"saves,omitempty"` // proficient saving throws
+	Skills      map[string]ProficiencyLevel `json:"skills,omitempty"`
+	Resistances []DamageType                `json:"resistances,omitempty"`
+	Immunities  []DamageType                `json:"immunities,omitempty"`
+	Languages   []string                    `json:"languages,omitempty"`
+	Traits      []Trait                     `json:"traits,omitempty"`
+	Attacks     []CreatureAttack            `json:"attacks,omitempty"`
+	Actions     []Action                    `json:"actions,omitempty"` // non-attack actions
+	Modifiers   []Modifier                  `json:"modifiers,omitempty"`
+}
+
+type Trait struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+// CreatureAttack is a stat block attack. To-hit is a Formula because a Primal Companion's is
+// "your spell attack modifier", which AttackDetails can't express.
+type CreatureAttack struct {
+	Name        string     `json:"name"`
+	Type        ActionType `json:"type"`
+	Ranged      bool       `json:"ranged,omitempty"`
+	Reach       int        `json:"reach,omitempty"`        // melee
+	RangeNormal int        `json:"range_normal,omitempty"` // ranged
+	RangeLong   int        `json:"range_long,omitempty"`
+	ToHit       Formula    `json:"to_hit"`
+	DamageDice  string     `json:"damage_dice,omitempty"`
+	Damage      Formula    `json:"damage"` // flat part added to the dice
+	DamageType  DamageType `json:"damage_type"`
+	Description string     `json:"description,omitempty"` // riders, save DCs, etc.
+}
+
+// PetGrant says which creatures a feature or spell lets the character keep.
+type PetGrant struct {
+	Tags        []string `json:"tags,omitempty"`         // creatures with any of these tags are allowed
+	CreatureIDs []string `json:"creature_ids,omitempty"` // plus these specific creatures
+}
+
+type PetStatus string
+
+const (
+	PetActive    PetStatus = "active"
+	PetDismissed PetStatus = "dismissed" // e.g. a familiar in its pocket dimension
+	PetDead      PetStatus = "dead"      // dropped to 0 HP; a Primal Companion awaiting revival
+)
+
+// Pet is a creature the character owns, with its play state. Its stat block is computed onto the sheet.
+type Pet struct {
+	ID         string      `json:"id"`          // instance id, stable across form changes
+	CreatureID string      `json:"creature_id"` // which stat block
+	SourceID   string      `json:"source_id"`   // library id of the granting feature or spell
+	Name       string      `json:"name,omitempty"`
+	Status     PetStatus   `json:"status"`
+	CurrentHP  int         `json:"current_hp"`
+	TempHP     int         `json:"temp_hp"`
+	Conditions []Condition `json:"conditions,omitempty"`
+	Modifiers  []Modifier  `json:"modifiers,omitempty"` // ad hoc, like Character.Modifiers
+	Notes      string      `json:"notes,omitempty"`
 }
 
 // ACOption is one candidate AC calculation, shown on the sheet so a UI can display its working.
@@ -828,6 +972,7 @@ type Spell struct {
 	SaveEffect    string        `json:"save_effect,omitempty"` // "half damage", "negates", ...
 	Effects       []SpellEffect `json:"effects,omitempty"`
 	ACFormula     *ACFormula    `json:"ac_formula,omitempty"` // Mage Armor: selectable via ac_formula_override while castable
+	Pets          *PetGrant     `json:"pets,omitempty"`       // Find Familiar: the forms the summoned pet can take
 }
 
 type SpellList struct {
@@ -1012,6 +1157,8 @@ type Library interface {
 	Class(id string) (Class, error)
 	Spell(id string) (Spell, error)
 	SpellList(id string) (SpellList, error)
+	Creature(id string) (Creature, error)
+	Creatures() []Creature // every creature, sorted by id: a pet grant's tags are matched against them
 	// Item, Race, Class ... added as needed
 }
 

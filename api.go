@@ -546,6 +546,9 @@ func (s *Server) routeCharacters(w http.ResponseWriter, r *http.Request, segs []
 	case "inventory":
 		s.routeInventory(w, r, id, rest)
 
+	case "pets":
+		s.routePets(w, r, id, rest)
+
 	default:
 		writeError(w, http.StatusNotFound, "not_found", "no such route")
 	}
@@ -562,6 +565,60 @@ type ackRequest struct {
 
 type quantityRequest struct {
 	Delta int `json:"delta"`
+}
+
+func (s *Server) routePets(w http.ResponseWriter, r *http.Request, id string, rest []string) {
+	switch len(rest) {
+	case 0:
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w, "POST")
+			return
+		}
+		actOn(s, w, r, id, func(c *Character, pre Sheet, req AddPetRequest) (map[string]any, error) {
+			petID, err := AddPet(c, pre, s.library(), req)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"pet_id": petID}, nil
+		})
+
+	case 1:
+		petID := rest[0]
+		switch r.Method {
+		case http.MethodPatch:
+			actOn(s, w, r, id, func(c *Character, pre Sheet, p PetPatch) (map[string]any, error) {
+				return nil, PatchPet(c, pre, s.library(), petID, p)
+			})
+		case http.MethodDelete:
+			s.act(w, r, id, func(c *Character, _ Sheet) (map[string]any, error) {
+				return nil, RemovePet(c, petID)
+			})
+		default:
+			methodNotAllowed(w, "PATCH", "DELETE")
+		}
+
+	case 2:
+		petID := rest[0]
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w, "POST")
+			return
+		}
+		switch rest[1] {
+		case "hp":
+			actOn(s, w, r, id, func(c *Character, pre Sheet, a HPAction) (map[string]any, error) {
+				return nil, ApplyPetHP(c, pre, petID, a)
+			})
+		case "conditions":
+			actOn(s, w, r, id, func(c *Character, _ Sheet, a ConditionsAction) (map[string]any, error) {
+				return nil, ApplyPetConditions(c, petID, a)
+			})
+		default:
+			writeError(w, http.StatusNotFound, "not_found", "no such route")
+		}
+
+	default:
+		writeError(w, http.StatusNotFound, "not_found", "no such route")
+	}
 }
 
 func (s *Server) routeInventory(w http.ResponseWriter, r *http.Request, id string, rest []string) {

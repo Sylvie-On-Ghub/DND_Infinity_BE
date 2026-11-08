@@ -31,6 +31,7 @@ const apiVersion = "0.2.0"
 type ActionResponse struct {
 	Sheet   Sheet  `json:"sheet"`
 	EntryID string `json:"entry_id,omitempty"` // inventory add and move: the entry that was created or moved
+	PetID   string `json:"pet_id,omitempty"`   // pet add: the pet that was created
 	Removed bool   `json:"removed,omitempty"`  // quantity, selections and acknowledgements: whether something was removed
 }
 
@@ -88,13 +89,14 @@ type routeDoc struct {
 var paramDocs = map[string]string{
 	"id":        "A character id (letters, digits, - and _), or a content id on the content routes.",
 	"entryId":   "An inventory entry id, as returned when the item was added or in the sheet's inventory.",
+	"petId":     "A pet id, as returned when the pet was added or in the sheet's pets.",
 	"featureId": "The id of the feature (or item, for charges) whose resource is being changed, as in the sheet's resources.",
-	"kind":      "One of features, items, classes, spells, spell-lists, skills, backgrounds, races.",
+	"kind":      "One of features, items, classes, spells, spell-lists, skills, backgrounds, races, creatures.",
 }
 
 var errorDocs = map[int]string{
 	400: "Bad request: malformed JSON, an unknown field, an invalid id, or a request that can't be carried out. Rules problems are never errors; they come back as warnings on the sheet.",
-	404: "Not found: no such character, inventory entry, feature or content.",
+	404: "Not found: no such character, inventory entry, pet, feature or content.",
 	401: "Sign in required: the bearer token is missing, unknown or expired.",
 	409: "`already_exists`: you already have a character with that id. `version_conflict`: the character has changed since you read it, so fetch it again and retry.",
 	429: "Too many attempts. The `Retry-After` header says how many seconds to wait.",
@@ -181,6 +183,27 @@ var apiRoutes = []routeDoc{
 	{ID: "removeAcknowledgement", Method: "DELETE", Path: "/api/characters/{id}/acknowledgements", Tag: "Choices",
 		Summary: "Remove an acknowledgement", Query: []queryDoc{{"key", "The warning key (URL-encode it: keys contain colons).", true}},
 		Response: ActionResponse{}, Success: "The updated sheet.", Errors: []int{400, 404}},
+
+	// ----- Pets
+	{ID: "addPet", Method: "POST", Path: "/api/characters/{id}/pets", Tag: "Pets",
+		Summary:     "Add a pet",
+		Description: "`creature_id` is a stat block from /api/content/creatures; `source_id` is the feature or spell that grants it (`find_familiar`, `pact_of_the_chain`...). The pet starts active at full HP. A source the character doesn't have, or one that doesn't allow that creature, is a warning on the pet, not an error. Returns the pet's id in `pet_id`.",
+		Request:     AddPetRequest{}, Example: `{"creature_id":"owl","source_id":"find_familiar","name":"Hoot"}`, Response: ActionResponse{}, Success: "The updated sheet and the pet id.", Errors: []int{400, 404}},
+	{ID: "patchPet", Method: "PATCH", Path: "/api/characters/{id}/pets/{petId}", Tag: "Pets",
+		Summary:     "Change a pet",
+		Description: "Send any of `name`, `notes`, `status` (active, dismissed, dead), `creature_id` and `modifiers` (replaces the list). A new `creature_id` is a new form, as when recasting Find Familiar: HP resets to its maximum and temp HP and conditions clear. Setting a dead pet back to active restores its HP.",
+		Request:     PetPatch{}, Example: `{"creature_id":"raven"}`, Response: ActionResponse{}, Success: "The updated sheet.", Errors: []int{400, 404}},
+	{ID: "petHP", Method: "POST", Path: "/api/characters/{id}/pets/{petId}/hp", Tag: "Pets",
+		Summary:     "Damage, heal or set a pet's HP",
+		Description: "Same body as the character's HP action. A pet that drops to 0 HP becomes `dead`; healing doesn't revive it.",
+		Request:     HPAction{}, Example: `{"damage": 4}`, Response: ActionResponse{}, Success: "The updated sheet.", Errors: []int{400, 404}},
+	{ID: "petConditions", Method: "POST", Path: "/api/characters/{id}/pets/{petId}/conditions", Tag: "Pets",
+		Summary:     "Add or remove a pet's conditions",
+		Description: "Same body as the character's conditions action, without exhaustion.",
+		Request:     ConditionsAction{}, Example: `{"add": ["prone"]}`, Response: ActionResponse{}, Success: "The updated sheet.", Errors: []int{400, 404}},
+	{ID: "removePet", Method: "DELETE", Path: "/api/characters/{id}/pets/{petId}", Tag: "Pets",
+		Summary:  "Remove a pet",
+		Response: ActionResponse{}, Success: "The updated sheet.", Errors: []int{404}},
 
 	// ----- Inventory
 	{ID: "addItem", Method: "POST", Path: "/api/characters/{id}/inventory", Tag: "Inventory",
@@ -281,6 +304,8 @@ var fieldDocs = map[string]string{
 	"Sheet.pact_slots":               "Pact magic slots. Absent when the character has none.",
 	"Sheet.caster_level":             "Combined caster level for multiclass slot tables. Pact casters don't count.",
 	"Sheet.inventory":                "Resolved inventory entries with names, weights, costs and containers.",
+	"Sheet.pet_sources":              "The features and castable spells that let the character keep a pet (Find Familiar, Pact of the Chain, Primal Companion), each with the creatures it allows and how many active pets it has. Use one to add a pet.",
+	"Sheet.pets":                     "Each pet's computed stat block (scaled by its owner where the creature says so) and play state, with its own warnings.",
 	"Sheet.carry":                    "Carried weight against capacity, and the encumbrance state.",
 	"Sheet.attunement":               "Attuned items against the limit: the ruleset's max_attuned (default 3) changed by attunement.max modifiers. max is -1 when unlimited.",
 	"Sheet.wallet":                   "Coins by denomination and their total value in base units.",
@@ -338,6 +363,7 @@ var tagDocs = []struct{ Name, Description string }{
 	{"Sheet", "The computed sheet, and a no-save preview."},
 	{"Play actions", "Things that happen at the table: damage, rests, slots, conditions, level-ups. Each returns the fresh sheet."},
 	{"Choices", "Pending choices, their options, selections, and acknowledging warnings."},
+	{"Pets", "Familiars and companions: their stat blocks are on the sheet under `pets`."},
 	{"Inventory", "Items, containers and equipment."},
 	{"Coins", "Gaining, spending, paying and converting currency."},
 	{"Content", "The loaded classes, features, items, spells and skills, and reloading them."},

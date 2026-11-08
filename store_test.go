@@ -493,3 +493,14 @@ func TestNewCharacterID(t *testing.T) {
 		t.Errorf("generated id should be valid: %v", err)
 	}
 }
+
+func TestOldCompanionIDsStillLoad(t *testing.T) {
+	c, err := decodeCharacter([]byte(`{"id":"a","name":"A","companion_ids":["x"]}`))
+	if err != nil || len(c.Pets) != 0 {
+		t.Errorf("old character: pets %v, err %v", c.Pets, err)
+	}
+	c, err = decodeCharacter([]byte(`{"id":"a","name":"A","pets":[{"id":"p1","creature_id":"owl","source_id":"find_familiar","status":"active","current_hp":1,"temp_hp":0}]}`))
+	if err != nil || len(c.Pets) != 1 || c.Pets[0].CreatureID != "owl" || c.Pets[0].Status != PetActive {
+		t.Errorf("pets = %+v, err %v", c.Pets, err)
+	}
+}

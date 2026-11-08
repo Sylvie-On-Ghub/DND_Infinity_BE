@@ -15,11 +15,12 @@ import (
 // ---------------------------------------------------------------------------
 
 type fakeLib struct {
-	features map[string]Feature
-	items    map[string]Item
-	classes  map[string]Class
-	spells   map[string]Spell
-	lists    map[string]SpellList
+	features  map[string]Feature
+	items     map[string]Item
+	classes   map[string]Class
+	spells    map[string]Spell
+	lists     map[string]SpellList
+	creatures map[string]Creature
 }
 
 func (l fakeLib) Feature(id string) (Feature, error) {
@@ -64,6 +65,21 @@ func (l fakeLib) SpellList(id string) (SpellList, error) {
 		return s, nil
 	}
 	return SpellList{}, fmt.Errorf("no spell list %q", id)
+}
+
+func (l fakeLib) Creature(id string) (Creature, error) {
+	if c, ok := l.creatures[id]; ok {
+		return c, nil
+	}
+	return Creature{}, fmt.Errorf("no creature %q", id)
+}
+
+func (l fakeLib) Creatures() []Creature {
+	out := []Creature{}
+	for _, id := range sortedKeys(l.creatures) {
+		out = append(out, l.creatures[id])
+	}
+	return out
 }
 
 func intp(n int) *int { return &n }
@@ -1147,5 +1163,82 @@ func TestInspirationCapAndAcknowledgement(t *testing.T) {
 	w, _ = findWarning(sh, WarnOverCap)
 	if w.Acknowledged {
 		t.Error("acknowledgement should lapse when the offending value changes")
+	}
+}
+
+func TestEvalFormulaOwnerTerms(t *testing.T) {
+	term := func(src string, n int) []Term {
+		out := make([]Term, n)
+		for i := range out {
+			out[i] = Term{Source: src}
+		}
+		return out
+	}
+	owner := &ownerCtx{modOf: map[Ability]int{Wis: 3}, pb: 3, level: 7, classLevels: map[string]int{"ranger": 7},
+		spellAttack: 6, spellSaveDC: 14, hasSpellcasting: true}
+	self := formulaCtx{modOf: map[Ability]int{Dex: 2}, pb: 2, level: 4, classLevels: map[string]int{"x": 3}, owner: owner}
+	cases := []struct {
+		name string
+		f    Formula
+		ctx  formulaCtx
+		want int
+		bad  []string
+	}{
+		{"owner wis", Formula{Base: 13, Terms: term("owner.mod.wis", 1)}, self, 16, nil},
+		{"owner class level x5", Formula{Base: 5, Terms: term("owner.class_level.ranger", 5)}, self, 40, nil},
+		{"owner spell attack", Formula{Terms: term("owner.spell_attack", 1)}, self, 6, nil},
+		{"owner save dc", Formula{Terms: term("owner.spell_save_dc", 1)}, self, 14, nil},
+		{"owner pb", Formula{Terms: term("owner.pb", 1)}, self, 3, nil},
+		{"owner level", Formula{Terms: term("owner.level", 1)}, self, 7, nil},
+		{"no owner", Formula{Terms: term("owner.pb", 1)}, formulaCtx{}, 0, []string{"owner.pb"}},
+		{"no spellcasting", Formula{Terms: term("owner.spell_attack", 1)},
+			formulaCtx{owner: &ownerCtx{}}, 0, []string{"owner.spell_attack"}},
+		{"own dex", Formula{Base: 10, Terms: term("mod.dex", 1)}, self, 12, nil},
+		{"own pb", Formula{Terms: term("pb", 1)}, self, 2, nil},
+		{"own level", Formula{Terms: term("level", 1)}, self, 4, nil},
+		{"own class level", Formula{Terms: term("class_level.x", 1)}, self, 3, nil},
+		{"div and max", Formula{Terms: []Term{{Source: "level", Div: 2, Max: intp(1)}}}, self, 1, nil},
+	}
+	for _, tc := range cases {
+		got, bad := evalFormula(tc.f, tc.ctx)
+		if got != tc.want || !slices.Equal(bad, tc.bad) {
+			t.Errorf("%s: got %d %v, want %d %v", tc.name, got, bad, tc.want, tc.bad)
+		}
+	}
+}
+
+func TestFormulaTermMultiplier(t *testing.T) {
+	ctx := formulaCtx{owner: &ownerCtx{classLevels: map[string]int{"ranger": 7}}}
+	f := Formula{Base: 5, Terms: []Term{{Source: "owner.class_level.ranger", Mul: 5}}}
+	if got, bad := evalFormula(f, ctx); got != 40 || bad != nil {
+		t.Errorf("5 + 5 x level 7 = %d %v, want 40", got, bad)
+	}
+	half := Formula{Terms: []Term{{Source: "owner.class_level.ranger", Mul: 3, Div: 2, Max: intp(10)}}}
+	if got, _ := evalFormula(half, ctx); got != 10 {
+		t.Errorf("multiply, then divide, then cap: got %d, want 10", got)
+	}
+}
+
+func TestShortRestExhaustionModifier(t *testing.T) {
+	lib := fakeLib{features: map[string]Feature{"tireless": {ID: "tireless", Name: "Tireless", Modifiers: []Modifier{
+		{Target: TargetShortRestExhaustion, Kind: ModAdd, Value: 1, SourceID: "tireless"}}}}}
+	c := newChar(10, nil)
+	c.FeatureIDs = []string{"tireless"}
+	c.Exhaustion = 2
+	sh := mustCompute(t, c, lib, Ruleset{})
+	if sh.ShortRestExhaustion != 1 {
+		t.Fatalf("short_rest_exhaustion = %d, want 1", sh.ShortRestExhaustion)
+	}
+	if err := ApplyRest(&c, sh, "short"); err != nil || c.Exhaustion != 1 {
+		t.Errorf("after a short rest: exhaustion %d, err %v; want 1", c.Exhaustion, err)
+	}
+	c.Exhaustion = 0
+	if ApplyRest(&c, sh, "short"); c.Exhaustion != 0 {
+		t.Errorf("exhaustion can't go below 0: %d", c.Exhaustion)
+	}
+	plain := newChar(10, nil)
+	plain.Exhaustion = 2
+	if ApplyRest(&plain, mustCompute(t, plain, lib, Ruleset{}), "short"); plain.Exhaustion != 2 {
+		t.Errorf("without the modifier a short rest keeps exhaustion: %d", plain.Exhaustion)
 	}
 }

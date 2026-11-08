@@ -881,6 +881,7 @@ var fixedTargets = map[string]bool{
 	TargetAttackRanged: true, TargetCheckAll: true, TargetSaveAll: true, TargetDeathSave: true,
 	TargetCarryCapacity: true, TargetJackOfAllTrades: true, TargetAttunementMax: true,
 	TargetDamageAll: true, TargetDamageMelee: true, TargetDamageRanged: true, TargetDamageSpell: true,
+	TargetShortRestExhaustion: true,
 }
 
 func isAbility(s string) bool {
@@ -929,8 +930,33 @@ func validTarget(t string, skillIDs map[string]bool) bool {
 	case "spell":
 		class, ok := strings.CutPrefix(rest, "cantrips.")
 		return ok && class != ""
+	case "pet":
+		_, inner, ok := splitPetTarget(t)
+		return ok && validTarget(inner, skillIDs)
 	}
 	return false
+}
+
+// markAcknowledged marks the warnings the character has acknowledged, with their notes.
+func markAcknowledged(ws []Warning, acks map[string]Acknowledgement) {
+	for i, w := range ws {
+		if a, ok := acks[w.Key]; ok {
+			ws[i].Acknowledged, ws[i].AckNote = true, a.Note
+		}
+	}
+}
+
+// splitPetTarget splits "pet.<tag>.<target>" into its tag and the target on the pet.
+func splitPetTarget(t string) (tag, inner string, ok bool) {
+	rest, ok := strings.CutPrefix(t, "pet.")
+	if !ok {
+		return "", "", false
+	}
+	tag, inner, ok = strings.Cut(rest, ".")
+	if !ok || tag == "" || inner == "" {
+		return "", "", false
+	}
+	return tag, inner, true
 }
 
 // ---------------------------------------------------------------------------
@@ -1076,6 +1102,15 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 	}
 	g := gather(c, lib, totalLevel)
 	mods := dedupe(resolveAbilityValues(c, activeMods(g)))
+	// Modifiers aimed at pets are set aside: they never touch the owner, and pets read them later.
+	var petMods []Modifier
+	mods = slices.DeleteFunc(mods, func(m Modifier) bool {
+		if _, _, ok := splitPetTarget(m.Target); ok {
+			petMods = append(petMods, m)
+			return true
+		}
+		return false
+	})
 
 	// Inventory and carrying are worked out first: variant encumbrance comes back as ordinary modifiers.
 	invRes := computeInventory(c, lib, rules, newCalc(mods))
@@ -1337,11 +1372,9 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 			continue
 		}
 		seenKey[w.Key] = true
-		if a, ok := acks[w.Key]; ok {
-			w.Acknowledged, w.AckNote = true, a.Note
-		}
 		finalWarnings = append(finalWarnings, w)
 	}
+	markAcknowledged(finalWarnings, acks)
 
 	features := g.views
 	if features == nil {
@@ -1352,7 +1385,8 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 		pending = []PendingChoice{}
 	}
 
-	return Sheet{
+	sh := Sheet{
+		petMods:          petMods,
 		Level:            level,
 		ProficiencyBonus: pb,
 		MaxHP:            maxHP,
@@ -1385,7 +1419,12 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 		PactSlots:        pactSlots,
 		ArmourProfs:      g.armour,
 		WeaponProfs:      g.weapons,
-	}, nil
+
+		ShortRestExhaustion: k.sum(TargetShortRestExhaustion),
+	}
+	sh.Pets = petViews(c, sh, lib, skillDefs, acks)
+	sh.PetSources = petSources(c, sh, lib)
+	return sh, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -1397,6 +1436,12 @@ const (
 	WarnNotAttuned         WarningCode = "not_attuned"
 	WarnMultipleEquipped   WarningCode = "multiple_equipped" // more than one armour or shield
 	WarnACRequirementUnmet WarningCode = "ac_requirement_unmet"
+
+	WarnPetSourceMissing  WarningCode = "pet_source_missing"  // owner has no feature or spell with the pet's source_id
+	WarnPetNotAllowed     WarningCode = "pet_not_allowed"     // source has no pets grant, or the creature isn't in it
+	WarnPetTooMany        WarningCode = "pet_too_many"        // more than one active pet from the same source
+	WarnPetOverMaxHP      WarningCode = "pet_over_max_hp"     // current HP above the pet's maximum
+	WarnPetNoSpellcasting WarningCode = "pet_no_spellcasting" // owner.spell_* used but no spellcasting source found
 )
 
 // applyInventory handles equipped items. Armour and shields always count as worn (for AC formulas
@@ -1471,24 +1516,35 @@ var defaultBaseAC = ACFormula{
 	Formula:  Formula{Base: 10, Terms: []Term{{Source: "mod.dex"}}},
 }
 
+// formulaCtx is what a Formula's terms read. owner is nil for a character's own formulas.
+type formulaCtx struct {
+	modOf       map[Ability]int
+	pb, level   int
+	classLevels map[string]int
+	owner       *ownerCtx
+}
+
+// ownerCtx is the owner's finished sheet, as read by a pet's owner.* terms.
+type ownerCtx struct {
+	modOf                    map[Ability]int
+	pb, level                int
+	classLevels              map[string]int
+	spellAttack, spellSaveDC int
+	hasSpellcasting          bool // false => owner.spell_* terms are reported as bad
+}
+
 // evalFormula returns the value and any term sources it couldn't understand (counted as 0).
-func evalFormula(f Formula, modOf map[Ability]int, pb, level int, classLevels map[string]int) (int, []string) {
+func evalFormula(f Formula, ctx formulaCtx) (int, []string) {
 	v := f.Base
 	var bad []string
 	for _, t := range f.Terms {
-		x := 0
-		switch {
-		case t.Source == "pb":
-			x = pb
-		case t.Source == "level":
-			x = level
-		case strings.HasPrefix(t.Source, "class_level."):
-			x = classLevels[strings.TrimPrefix(t.Source, "class_level.")]
-		case strings.HasPrefix(t.Source, "mod.") && isAbility(strings.TrimPrefix(t.Source, "mod.")):
-			x = modOf[Ability(strings.TrimPrefix(t.Source, "mod."))]
-		default:
+		x, ok := termValue(t.Source, ctx)
+		if !ok {
 			bad = append(bad, t.Source)
 			continue
+		}
+		if t.Mul > 1 {
+			x *= t.Mul
 		}
 		if t.Div > 1 {
 			x /= t.Div
@@ -1499,6 +1555,36 @@ func evalFormula(f Formula, modOf map[Ability]int, pb, level int, classLevels ma
 		v += x
 	}
 	return v, bad
+}
+
+func termValue(src string, ctx formulaCtx) (int, bool) {
+	if rest, ok := strings.CutPrefix(src, "owner."); ok {
+		o := ctx.owner
+		switch {
+		case o == nil:
+			return 0, false
+		case rest == "spell_attack" || rest == "spell_save_dc":
+			if !o.hasSpellcasting {
+				return 0, false
+			}
+			if rest == "spell_attack" {
+				return o.spellAttack, true
+			}
+			return o.spellSaveDC, true
+		}
+		return termValue(rest, formulaCtx{modOf: o.modOf, pb: o.pb, level: o.level, classLevels: o.classLevels})
+	}
+	switch {
+	case src == "pb":
+		return ctx.pb, true
+	case src == "level":
+		return ctx.level, true
+	case strings.HasPrefix(src, "class_level."):
+		return ctx.classLevels[strings.TrimPrefix(src, "class_level.")], true
+	case strings.HasPrefix(src, "mod.") && isAbility(strings.TrimPrefix(src, "mod.")):
+		return ctx.modOf[Ability(strings.TrimPrefix(src, "mod."))], true
+	}
+	return 0, false
 }
 
 // spellACFormulas returns the AC formulas of spells the character can cast: each class source's
@@ -1576,7 +1662,7 @@ func computeAC(c Character, g *gathered, lib Library, rules Ruleset, k *calc, mo
 	}
 	all := make([]scored, 0, len(candidates))
 	for _, f := range candidates {
-		v, bad := evalFormula(f.Formula, modOf, pb, level, g.classLevels)
+		v, bad := evalFormula(f.Formula, formulaCtx{modOf: modOf, pb: pb, level: level, classLevels: g.classLevels})
 		for _, src := range bad {
 			warns = append(warns, mkWarning(WarnUnknownTerm, f.ID, "", "", src,
 				fmt.Sprintf("AC formula %q has an unknown term %q (counted as 0)", f.Name, src)))
@@ -2355,7 +2441,7 @@ func computeSpells(c Character, g *gathered, lib Library, rules Ruleset, k *calc
 		switch mode {
 		case PrepPrepared, PrepBook:
 			if def.PreparedFormula != nil {
-				v, bad := evalFormula(*def.PreparedFormula, modOf, pb, totalLevel, g.classLevels)
+				v, bad := evalFormula(*def.PreparedFormula, formulaCtx{modOf: modOf, pb: pb, level: totalLevel, classLevels: g.classLevels})
 				for _, src := range bad {
 					warns = append(warns, mkWarning(WarnUnknownTerm, srcID, "", "", src,
 						fmt.Sprintf("prepared-spell formula for %s has an unknown term %q (counted as 0)", ce.name, src)))

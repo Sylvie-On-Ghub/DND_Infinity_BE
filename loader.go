@@ -6,7 +6,7 @@ package character
 //
 //	pack.json                  optional: {"id": "...", "name": "...", "version": "...", "load_order": 0}
 //	skills.json                optional: an array of skill definitions
-//	features/ items/ classes/ spells/ spell_lists/
+//	features/ items/ classes/ spells/ spell_lists/ creatures/
 //	                           any depth; every .json file holds one object or an array of them
 //
 // Packs load in the order given. A later pack replaces an earlier entry with the same id
@@ -78,28 +78,30 @@ type srcInfo struct{ pack, file string }
 
 // ContentLibrary is the Library implementation backed by loaded packs.
 type ContentLibrary struct {
-	features map[string]Feature
-	items    map[string]Item
-	classes  map[string]Class
-	spells   map[string]Spell
-	lists    map[string]SpellList
-	skills   []SkillDef
-	skillIdx map[string]int
-	src      map[string]srcInfo // "kind:id" -> where it came from
-	issues   []Issue
+	features  map[string]Feature
+	items     map[string]Item
+	classes   map[string]Class
+	spells    map[string]Spell
+	lists     map[string]SpellList
+	creatures map[string]Creature
+	skills    []SkillDef
+	skillIdx  map[string]int
+	src       map[string]srcInfo // "kind:id" -> where it came from
+	issues    []Issue
 }
 
 var _ Library = (*ContentLibrary)(nil)
 
 func newContentLibrary() *ContentLibrary {
 	return &ContentLibrary{
-		features: map[string]Feature{},
-		items:    map[string]Item{},
-		classes:  map[string]Class{},
-		spells:   map[string]Spell{},
-		lists:    map[string]SpellList{},
-		skillIdx: map[string]int{},
-		src:      map[string]srcInfo{},
+		features:  map[string]Feature{},
+		items:     map[string]Item{},
+		classes:   map[string]Class{},
+		spells:    map[string]Spell{},
+		lists:     map[string]SpellList{},
+		creatures: map[string]Creature{},
+		skillIdx:  map[string]int{},
+		src:       map[string]srcInfo{},
 	}
 }
 
@@ -142,6 +144,21 @@ func (l *ContentLibrary) SpellList(id string) (SpellList, error) {
 	return SpellList{}, fmt.Errorf("spell list %q not found", id)
 }
 
+func (l *ContentLibrary) Creature(id string) (Creature, error) {
+	if c, ok := l.creatures[id]; ok {
+		return c, nil
+	}
+	return Creature{}, fmt.Errorf("creature %q not found", id)
+}
+
+func (l *ContentLibrary) Creatures() []Creature {
+	out := make([]Creature, 0, len(l.creatures))
+	for _, id := range sortedKeys(l.creatures) {
+		out = append(out, l.creatures[id])
+	}
+	return out
+}
+
 func (l *ContentLibrary) Skills() []SkillDef {
 	return append([]SkillDef(nil), l.skills...)
 }
@@ -173,6 +190,7 @@ func (l *ContentLibrary) Counts() map[string]int {
 		"classes":     len(l.classes),
 		"spells":      len(l.spells),
 		"spell_lists": len(l.lists),
+		"creatures":   len(l.creatures),
 		"skills":      len(l.skills),
 	}
 }
@@ -325,10 +343,12 @@ func (l *ContentLibrary) loadFile(fsys fs.FS, pack, file string, seen map[string
 		loadEntities(l, pack, file, data, seen, "spell", func(x Spell) string { return x.ID }, l.spells)
 	case "spell_lists":
 		loadEntities(l, pack, file, data, seen, "spell_list", func(x SpellList) string { return x.ID }, l.lists)
+	case "creatures":
+		loadEntities(l, pack, file, data, seen, "creature", func(x Creature) string { return x.ID }, l.creatures)
 	case "skills.json":
 		l.loadSkills(pack, file, data, seen)
 	default:
-		l.addIssue(SevWarning, pack, file, "", "", "ignored: not in features/, items/, classes/, spells/, spell_lists/ and not skills.json")
+		l.addIssue(SevWarning, pack, file, "", "", "ignored: not in features/, items/, classes/, spells/, spell_lists/, creatures/ and not skills.json")
 	}
 }
 
@@ -463,9 +483,12 @@ var (
 )
 
 type validator struct {
-	l      *ContentLibrary
-	skills map[string]bool
+	l       *ContentLibrary
+	skills  map[string]bool
+	petTags map[string]petTagUse // pet.<tag>.* targets seen, checked against creature tags at the end
 }
+
+type petTagUse struct{ kind, id string }
 
 func (v *validator) err(kind, id, format string, args ...any) {
 	v.l.issueAt(SevError, kind, id, format, args...)
@@ -476,7 +499,7 @@ func (v *validator) warn(kind, id, format string, args ...any) {
 }
 
 func (l *ContentLibrary) validate() {
-	v := &validator{l: l, skills: map[string]bool{}}
+	v := &validator{l: l, skills: map[string]bool{}, petTags: map[string]petTagUse{}}
 	for _, s := range l.skills {
 		v.skills[s.ID] = true
 	}
@@ -501,6 +524,22 @@ func (l *ContentLibrary) validate() {
 	for _, id := range sortedKeys(l.lists) {
 		v.spellList(l.lists[id])
 	}
+	for _, id := range sortedKeys(l.creatures) {
+		v.creature(l.creatures[id])
+	}
+
+	creatureTags := map[string]bool{}
+	for _, c := range l.creatures {
+		for _, tag := range c.Tags {
+			creatureTags[tag] = true
+		}
+	}
+	for _, tag := range sortedKeys(v.petTags) {
+		if !creatureTags[tag] {
+			u := v.petTags[tag]
+			v.warn(u.kind, u.id, "modifies pets tagged %q, but no creature has that tag", tag)
+		}
+	}
 }
 
 func (v *validator) featureRef(kind, id, where, ref string) {
@@ -520,6 +559,10 @@ func (v *validator) modifiers(kind, id, where string, mods []Modifier) {
 		at := fmt.Sprintf("%s modifier %d", where, i+1)
 		if !validTarget(m.Target, v.skills) {
 			v.err(kind, id, "%s: unknown target %q", at, m.Target)
+		} else if tag, _, ok := splitPetTarget(m.Target); ok {
+			if _, seen := v.petTags[tag]; !seen {
+				v.petTags[tag] = petTagUse{kind, id}
+			}
 		}
 		if !modKinds[m.Kind] {
 			v.err(kind, id, "%s: unknown kind %q (add, set, min, multiply, advantage, disadvantage, note)", at, m.Kind)
@@ -651,6 +694,88 @@ func (v *validator) termSource(src string) bool {
 	return false
 }
 
+// creatureTermSource is termSource plus the owner.* terms, which only creature formulas may use.
+func (v *validator) creatureTermSource(src string) bool {
+	rest, ok := strings.CutPrefix(src, "owner.")
+	if !ok {
+		return v.termSource(src)
+	}
+	return rest == "spell_attack" || rest == "spell_save_dc" || v.termSource(rest)
+}
+
+func (v *validator) creatureFormula(id, where string, f Formula) {
+	for i, t := range f.Terms {
+		if !v.creatureTermSource(t.Source) {
+			v.err("creature", id, "%s term %d: unknown source %q (mod.<ability>, pb, level, class_level.<class id>, or owner. before any of those, owner.spell_attack, owner.spell_save_dc)", where, i+1, t.Source)
+		}
+		if t.Div < 0 {
+			v.err("creature", id, "%s term %d: div cannot be negative", where, i+1)
+		}
+		if t.Mul < 0 {
+			v.err("creature", id, "%s term %d: mul cannot be negative", where, i+1)
+		}
+	}
+}
+
+func (v *validator) creature(c Creature) {
+	const k = "creature"
+	if c.Name == "" {
+		v.warn(k, c.ID, "has no name")
+	}
+	if len(c.Abilities) == 0 {
+		v.err(k, c.ID, "has no abilities")
+	}
+	for a := range c.Abilities {
+		if !isAbility(string(a)) {
+			v.err(k, c.ID, "abilities: %q is not one of str, dex, con, int, wis, cha", a)
+		}
+	}
+	for _, a := range c.Saves {
+		if !isAbility(string(a)) {
+			v.err(k, c.ID, "saves: %q is not an ability", a)
+		}
+	}
+	for s := range c.Speeds {
+		if !isSpeed(string(s)) {
+			v.err(k, c.ID, "speeds: unknown speed %q", s)
+		}
+	}
+	for sk := range c.Skills {
+		if !v.skills[sk] {
+			v.err(k, c.ID, "skills: unknown skill %q", sk)
+		}
+	}
+	v.creatureFormula(c.ID, "ac", c.AC)
+	v.creatureFormula(c.ID, "hp", c.HP)
+	if c.PB != nil {
+		v.creatureFormula(c.ID, "pb", *c.PB)
+	}
+	for i, a := range c.Attacks {
+		at := fmt.Sprintf("attack %d", i+1)
+		if a.Name == "" {
+			v.err(k, c.ID, "%s has no name", at)
+		}
+		if a.DamageDice != "" && !diceRe.MatchString(a.DamageDice) {
+			v.err(k, c.ID, "%s: damage_dice %q must look like \"1d8\"", at, a.DamageDice)
+		}
+		v.creatureFormula(c.ID, at+" to_hit", a.ToHit)
+		v.creatureFormula(c.ID, at+" damage", a.Damage)
+	}
+	v.actions(k, c.ID, "creature", c.Actions)
+	v.modifiers(k, c.ID, "creature", c.Modifiers)
+}
+
+func (v *validator) petGrant(kind, id string, g *PetGrant) {
+	if g == nil {
+		return
+	}
+	for _, cid := range g.CreatureIDs {
+		if _, ok := v.l.creatures[cid]; !ok {
+			v.err(kind, id, "pets: unknown creature %q", cid)
+		}
+	}
+}
+
 func (v *validator) formula(kind, id, where string, f Formula) {
 	for i, t := range f.Terms {
 		if !v.termSource(t.Source) {
@@ -658,6 +783,9 @@ func (v *validator) formula(kind, id, where string, f Formula) {
 		}
 		if t.Div < 0 {
 			v.err(kind, id, "%s term %d: div cannot be negative", where, i+1)
+		}
+		if t.Mul < 0 {
+			v.err(kind, id, "%s term %d: mul cannot be negative", where, i+1)
 		}
 	}
 }
@@ -800,6 +928,7 @@ func (v *validator) choices(kind, id, where string, chs []Choice) {
 
 func (v *validator) feature(f Feature) {
 	const k = "feature"
+	v.petGrant(k, f.ID, f.Pets)
 	if f.Name == "" {
 		v.warn(k, f.ID, "has no name")
 	}
@@ -994,6 +1123,7 @@ func (v *validator) spellcasting(k, id, at string, sc SpellcastingDef) {
 
 func (v *validator) spell(s Spell) {
 	const k = "spell"
+	v.petGrant(k, s.ID, s.Pets)
 	if s.Name == "" {
 		v.warn(k, s.ID, "has no name")
 	}
