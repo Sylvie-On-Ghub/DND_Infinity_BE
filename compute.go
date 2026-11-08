@@ -1471,22 +1471,30 @@ var defaultBaseAC = ACFormula{
 	Formula:  Formula{Base: 10, Terms: []Term{{Source: "mod.dex"}}},
 }
 
+// formulaCtx is what a Formula's terms read. owner is nil for a character's own formulas.
+type formulaCtx struct {
+	modOf       map[Ability]int
+	pb, level   int
+	classLevels map[string]int
+	owner       *ownerCtx
+}
+
+// ownerCtx is the owner's finished sheet, as read by a pet's owner.* terms.
+type ownerCtx struct {
+	modOf                    map[Ability]int
+	pb, level                int
+	classLevels              map[string]int
+	spellAttack, spellSaveDC int
+	hasSpellcasting          bool // false => owner.spell_* terms are reported as bad
+}
+
 // evalFormula returns the value and any term sources it couldn't understand (counted as 0).
-func evalFormula(f Formula, modOf map[Ability]int, pb, level int, classLevels map[string]int) (int, []string) {
+func evalFormula(f Formula, ctx formulaCtx) (int, []string) {
 	v := f.Base
 	var bad []string
 	for _, t := range f.Terms {
-		x := 0
-		switch {
-		case t.Source == "pb":
-			x = pb
-		case t.Source == "level":
-			x = level
-		case strings.HasPrefix(t.Source, "class_level."):
-			x = classLevels[strings.TrimPrefix(t.Source, "class_level.")]
-		case strings.HasPrefix(t.Source, "mod.") && isAbility(strings.TrimPrefix(t.Source, "mod.")):
-			x = modOf[Ability(strings.TrimPrefix(t.Source, "mod."))]
-		default:
+		x, ok := termValue(t.Source, ctx)
+		if !ok {
 			bad = append(bad, t.Source)
 			continue
 		}
@@ -1499,6 +1507,36 @@ func evalFormula(f Formula, modOf map[Ability]int, pb, level int, classLevels ma
 		v += x
 	}
 	return v, bad
+}
+
+func termValue(src string, ctx formulaCtx) (int, bool) {
+	if rest, ok := strings.CutPrefix(src, "owner."); ok {
+		o := ctx.owner
+		switch {
+		case o == nil:
+			return 0, false
+		case rest == "spell_attack" || rest == "spell_save_dc":
+			if !o.hasSpellcasting {
+				return 0, false
+			}
+			if rest == "spell_attack" {
+				return o.spellAttack, true
+			}
+			return o.spellSaveDC, true
+		}
+		return termValue(rest, formulaCtx{modOf: o.modOf, pb: o.pb, level: o.level, classLevels: o.classLevels})
+	}
+	switch {
+	case src == "pb":
+		return ctx.pb, true
+	case src == "level":
+		return ctx.level, true
+	case strings.HasPrefix(src, "class_level."):
+		return ctx.classLevels[strings.TrimPrefix(src, "class_level.")], true
+	case strings.HasPrefix(src, "mod.") && isAbility(strings.TrimPrefix(src, "mod.")):
+		return ctx.modOf[Ability(strings.TrimPrefix(src, "mod."))], true
+	}
+	return 0, false
 }
 
 // spellACFormulas returns the AC formulas of spells the character can cast: each class source's
@@ -1576,7 +1614,7 @@ func computeAC(c Character, g *gathered, lib Library, rules Ruleset, k *calc, mo
 	}
 	all := make([]scored, 0, len(candidates))
 	for _, f := range candidates {
-		v, bad := evalFormula(f.Formula, modOf, pb, level, g.classLevels)
+		v, bad := evalFormula(f.Formula, formulaCtx{modOf: modOf, pb: pb, level: level, classLevels: g.classLevels})
 		for _, src := range bad {
 			warns = append(warns, mkWarning(WarnUnknownTerm, f.ID, "", "", src,
 				fmt.Sprintf("AC formula %q has an unknown term %q (counted as 0)", f.Name, src)))
@@ -2355,7 +2393,7 @@ func computeSpells(c Character, g *gathered, lib Library, rules Ruleset, k *calc
 		switch mode {
 		case PrepPrepared, PrepBook:
 			if def.PreparedFormula != nil {
-				v, bad := evalFormula(*def.PreparedFormula, modOf, pb, totalLevel, g.classLevels)
+				v, bad := evalFormula(*def.PreparedFormula, formulaCtx{modOf: modOf, pb: pb, level: totalLevel, classLevels: g.classLevels})
 				for _, src := range bad {
 					warns = append(warns, mkWarning(WarnUnknownTerm, srcID, "", "", src,
 						fmt.Sprintf("prepared-spell formula for %s has an unknown term %q (counted as 0)", ce.name, src)))

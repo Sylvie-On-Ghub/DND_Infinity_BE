@@ -1157,3 +1157,44 @@ func TestInspirationCapAndAcknowledgement(t *testing.T) {
 		t.Error("acknowledgement should lapse when the offending value changes")
 	}
 }
+
+func TestEvalFormulaOwnerTerms(t *testing.T) {
+	term := func(src string, n int) []Term {
+		out := make([]Term, n)
+		for i := range out {
+			out[i] = Term{Source: src}
+		}
+		return out
+	}
+	owner := &ownerCtx{modOf: map[Ability]int{Wis: 3}, pb: 3, level: 7, classLevels: map[string]int{"ranger": 7},
+		spellAttack: 6, spellSaveDC: 14, hasSpellcasting: true}
+	self := formulaCtx{modOf: map[Ability]int{Dex: 2}, pb: 2, level: 4, classLevels: map[string]int{"x": 3}, owner: owner}
+	cases := []struct {
+		name string
+		f    Formula
+		ctx  formulaCtx
+		want int
+		bad  []string
+	}{
+		{"owner wis", Formula{Base: 13, Terms: term("owner.mod.wis", 1)}, self, 16, nil},
+		{"owner class level x5", Formula{Base: 5, Terms: term("owner.class_level.ranger", 5)}, self, 40, nil},
+		{"owner spell attack", Formula{Terms: term("owner.spell_attack", 1)}, self, 6, nil},
+		{"owner save dc", Formula{Terms: term("owner.spell_save_dc", 1)}, self, 14, nil},
+		{"owner pb", Formula{Terms: term("owner.pb", 1)}, self, 3, nil},
+		{"owner level", Formula{Terms: term("owner.level", 1)}, self, 7, nil},
+		{"no owner", Formula{Terms: term("owner.pb", 1)}, formulaCtx{}, 0, []string{"owner.pb"}},
+		{"no spellcasting", Formula{Terms: term("owner.spell_attack", 1)},
+			formulaCtx{owner: &ownerCtx{}}, 0, []string{"owner.spell_attack"}},
+		{"own dex", Formula{Base: 10, Terms: term("mod.dex", 1)}, self, 12, nil},
+		{"own pb", Formula{Terms: term("pb", 1)}, self, 2, nil},
+		{"own level", Formula{Terms: term("level", 1)}, self, 4, nil},
+		{"own class level", Formula{Terms: term("class_level.x", 1)}, self, 3, nil},
+		{"div and max", Formula{Terms: []Term{{Source: "level", Div: 2, Max: intp(1)}}}, self, 1, nil},
+	}
+	for _, tc := range cases {
+		got, bad := evalFormula(tc.f, tc.ctx)
+		if got != tc.want || !slices.Equal(bad, tc.bad) {
+			t.Errorf("%s: got %d %v, want %d %v", tc.name, got, bad, tc.want, tc.bad)
+		}
+	}
+}
