@@ -44,8 +44,8 @@ func main() {
 	}
 
 	c := lib.Counts()
-	fmt.Printf("loaded: %d features, %d classes, %d items, %d spells, %d spell lists, %d skills\n",
-		c["features"], c["classes"], c["items"], c["spells"], c["spell_lists"], c["skills"])
+	fmt.Printf("loaded: %d features, %d classes, %d items, %d spells, %d spell lists, %d creatures, %d skills\n",
+		c["features"], c["classes"], c["items"], c["spells"], c["spell_lists"], c["creatures"], c["skills"])
 	fmt.Printf("%d error(s), %d warning(s)\n", errs, warns)
 	if errs > 0 {
 		os.Exit(1)

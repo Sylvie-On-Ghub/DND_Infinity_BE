@@ -5,7 +5,9 @@ package character
 // a failure may be a test mistake as much as a code bug.
 
 import (
+	"fmt"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -599,5 +601,48 @@ func TestTemisBubblingCauldronIsAMysticArcanumOption(t *testing.T) {
 	wiz, err := lib.SpellList("wizard")
 	if err != nil || !contains(wiz.SpellIDs, "temis_bubbling_cauldron") {
 		t.Errorf("the cauldron is missing from the wizard list (%v)", err)
+	}
+}
+
+func TestChainFamiliarWithInvestment(t *testing.T) {
+	lib := loadWarlockLib(t)
+	c := warlockFixture()
+	c.Classes[0].Level = 5
+	c.Classes[0].RolledHP = append(c.Classes[0].RolledHP, 5)
+	c.Selections[1].Picked = []string{"pact_of_the_chain", "investment_of_the_chain_master"}
+	c.Selections = append(c.Selections, Selection{FeatureID: "investment_of_the_chain_master", ChoiceID: "aerial_or_aquatic", Picked: []string{"aerial"}})
+	c.Pets = []Pet{
+		{ID: "imp", CreatureID: "imp", SourceID: "pact_of_the_chain", Status: PetActive, CurrentHP: 21},
+		{ID: "owl", CreatureID: "owl", SourceID: "find_familiar", Status: PetDismissed, CurrentHP: 1},
+		{ID: "bad", CreatureID: "imp", SourceID: "find_familiar", Status: PetDismissed, CurrentHP: 21},
+	}
+	sh := mustCompute(t, c, lib, Ruleset{})
+	chain, ok := findSource(sh, "feature:pact_of_the_chain")
+	if !ok {
+		t.Fatal("no Pact of the Chain spell source")
+	}
+
+	imp := petOf(t, sh, "imp")
+	if len(imp.Warnings) != 0 {
+		t.Errorf("imp warnings: %+v", imp.Warnings)
+	}
+	if imp.Speeds[SpeedFly] < 40 {
+		t.Errorf("imp fly speed = %d, want at least 40 from Aerial", imp.Speeds[SpeedFly])
+	}
+	dc := false
+	for _, n := range imp.Notes {
+		if strings.Contains(n.Note, fmt.Sprintf("(%d)", chain.SaveDC)) {
+			dc = true
+		}
+	}
+	if !dc {
+		t.Errorf("imp notes should show the warlock's save DC %d: %+v", chain.SaveDC, imp.Notes)
+	}
+
+	if owl := petOf(t, sh, "owl"); len(owl.Warnings) != 0 {
+		t.Errorf("an owl from Find Familiar is allowed: %+v", owl.Warnings)
+	}
+	if bad := petOf(t, sh, "bad"); !hasPetWarning(bad, WarnPetNotAllowed) {
+		t.Errorf("an imp from plain Find Familiar should warn: %+v", bad.Warnings)
 	}
 }
