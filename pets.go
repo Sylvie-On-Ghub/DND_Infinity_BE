@@ -14,6 +14,26 @@ import (
 	"strings"
 )
 
+// petViews computes every pet, then warns where one source has more than one active pet
+// (one familiar at a time).
+func petViews(c Character, sh Sheet, lib Library, skillDefs []SkillDef) []PetView {
+	out := []PetView{}
+	active := map[string]int{}
+	for _, p := range c.Pets {
+		out = append(out, petView(p, c, sh, lib, skillDefs))
+		if p.Status == PetActive {
+			active[p.SourceID]++
+		}
+	}
+	for i, v := range out {
+		if v.Status == PetActive && active[v.SourceID] > 1 {
+			out[i].Warnings = append(out[i].Warnings, mkWarning(WarnPetTooMany, v.ID, "", "", v.SourceID,
+				fmt.Sprintf("%d pets from %q are active at once; it allows one", active[v.SourceID], v.SourceID)))
+		}
+	}
+	return out
+}
+
 // petView computes one pet against its owner's finished sheet.
 func petView(p Pet, c Character, sh Sheet, lib Library, skillDefs []SkillDef) PetView {
 	v := PetView{
@@ -31,6 +51,13 @@ func petView(p Pet, c Character, sh Sheet, lib Library, skillDefs []SkillDef) Pe
 		return v
 	}
 	v.CreatureName, v.Size, v.Type = cr.Name, cr.Size, cr.Type
+	if !ownerHasSource(sh, p.SourceID) {
+		v.Warnings = append(v.Warnings, mkWarning(WarnPetSourceMissing, p.ID, "", "", p.SourceID,
+			fmt.Sprintf("%s comes from %q, which the character doesn't have", petLabel(p), p.SourceID)))
+	} else if !petAllowed(petGrantOf(lib, p.SourceID), cr) {
+		v.Warnings = append(v.Warnings, mkWarning(WarnPetNotAllowed, p.ID, "", "", p.CreatureID,
+			fmt.Sprintf("%q doesn't allow a %s as a pet", p.SourceID, cr.Name)))
+	}
 	v.Languages = append(v.Languages, cr.Languages...)
 	v.Traits = append(v.Traits, cr.Traits...)
 	v.Actions = append(v.Actions, cr.Actions...)
@@ -139,11 +166,66 @@ func petView(p Pet, c Character, sh Sheet, lib Library, skillDefs []SkillDef) Pe
 		}
 	}
 
+	if p.CurrentHP > v.MaxHP {
+		v.Warnings = append(v.Warnings, mkWarning(WarnPetOverMaxHP, p.ID, "", "", fmt.Sprint(p.CurrentHP),
+			fmt.Sprintf("%s has %d HP, above its maximum of %d", petLabel(p), p.CurrentHP, v.MaxHP)))
+	}
 	for _, src := range uniqueStrings(badTerms) {
+		if src == "owner.spell_attack" || src == "owner.spell_save_dc" {
+			v.Warnings = append(v.Warnings, mkWarning(WarnPetNoSpellcasting, p.ID, "", "", src,
+				fmt.Sprintf("%s uses its owner's %s, but %q gives the character no spellcasting (counted as 0)",
+					petLabel(p), strings.TrimPrefix(src, "owner."), p.SourceID)))
+			continue
+		}
 		v.Warnings = append(v.Warnings, mkWarning(WarnUnknownTerm, p.ID, "", "", src,
 			fmt.Sprintf("%s's stat block has a term %q that can't be worked out (counted as 0)", petLabel(p), src)))
 	}
 	return v
+}
+
+// ownerHasSource reports whether the character has the feature, or can cast the spell, that grants a pet.
+func ownerHasSource(sh Sheet, sourceID string) bool {
+	for _, fv := range sh.Features {
+		if fv.FeatureID == sourceID {
+			return true
+		}
+	}
+	_, ok := sourceCasting(sh, sourceID)
+	return ok
+}
+
+// sourceCasting is the first spellcasting source that knows or has prepared this spell.
+func sourceCasting(sh Sheet, spellID string) (SpellSourceView, bool) {
+	for _, s := range sh.Spellcasting {
+		for _, sp := range append(append([]SpellView{}, s.Spells...), s.Cantrips...) {
+			if sp.ID == spellID {
+				return s, true
+			}
+		}
+	}
+	return SpellSourceView{}, false
+}
+
+// petGrantOf is the pets grant of the feature or spell with this id, or nil.
+func petGrantOf(lib Library, sourceID string) *PetGrant {
+	if f, err := lib.Feature(sourceID); err == nil && f.Pets != nil {
+		return f.Pets
+	}
+	if s, err := lib.Spell(sourceID); err == nil {
+		return s.Pets
+	}
+	return nil
+}
+
+// petAllowed reports whether a grant lets the character keep this creature: any shared tag, or listed by id.
+func petAllowed(g *PetGrant, cr Creature) bool {
+	if g == nil {
+		return false
+	}
+	if slices.Contains(g.CreatureIDs, cr.ID) {
+		return true
+	}
+	return slices.ContainsFunc(g.Tags, func(t string) bool { return slices.Contains(cr.Tags, t) })
 }
 
 // ownerContext is what a pet's owner.* terms read. The spell terms use the spellcasting of the
@@ -185,14 +267,7 @@ func ownerSpellSource(sh Sheet, lib Library, sourceID string) (SpellSourceView, 
 		}
 		return SpellSourceView{}, false
 	}
-	for _, s := range sh.Spellcasting {
-		for _, sp := range append(append([]SpellView{}, s.Spells...), s.Cantrips...) {
-			if sp.ID == sourceID {
-				return s, true
-			}
-		}
-	}
-	return SpellSourceView{}, false
+	return sourceCasting(sh, sourceID)
 }
 
 func fillOwnerPlaceholders(note string, o ownerCtx) string {

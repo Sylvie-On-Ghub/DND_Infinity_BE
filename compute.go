@@ -1412,10 +1412,7 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 		ArmourProfs:      g.armour,
 		WeaponProfs:      g.weapons,
 	}
-	sh.Pets = []PetView{}
-	for _, p := range c.Pets {
-		sh.Pets = append(sh.Pets, petView(p, c, sh, lib, skillDefs))
-	}
+	sh.Pets = petViews(c, sh, lib, skillDefs)
 	return sh, nil
 }
 
@@ -1428,6 +1425,12 @@ const (
 	WarnNotAttuned         WarningCode = "not_attuned"
 	WarnMultipleEquipped   WarningCode = "multiple_equipped" // more than one armour or shield
 	WarnACRequirementUnmet WarningCode = "ac_requirement_unmet"
+
+	WarnPetSourceMissing  WarningCode = "pet_source_missing"  // owner has no feature or spell with the pet's source_id
+	WarnPetNotAllowed     WarningCode = "pet_not_allowed"     // source has no pets grant, or the creature isn't in it
+	WarnPetTooMany        WarningCode = "pet_too_many"        // more than one active pet from the same source
+	WarnPetOverMaxHP      WarningCode = "pet_over_max_hp"     // current HP above the pet's maximum
+	WarnPetNoSpellcasting WarningCode = "pet_no_spellcasting" // owner.spell_* used but no spellcasting source found
 )
 
 // applyInventory handles equipped items. Armour and shields always count as worn (for AC formulas

@@ -195,3 +195,81 @@ func TestSheetPetsIsEmptyNotNull(t *testing.T) {
 		t.Error(`a sheet with no pets should have "pets":[]`)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Warnings
+// ---------------------------------------------------------------------------
+
+var petWarningCodes = []WarningCode{WarnPetSourceMissing, WarnPetNotAllowed, WarnPetTooMany, WarnPetOverMaxHP, WarnPetNoSpellcasting}
+
+// wantOnlyPetWarning checks the pet has this pet warning and none of the other pet warning codes.
+func wantOnlyPetWarning(t *testing.T, p PetView, want WarningCode) {
+	t.Helper()
+	for _, code := range petWarningCodes {
+		if has := hasPetWarning(p, code); has != (code == want) {
+			t.Errorf("pet %s: %s present = %v; warnings %+v", p.ID, code, has, p.Warnings)
+		}
+	}
+}
+
+// caster is a level 3 "test" owner who knows Find Familiar.
+func caster(pets ...Pet) Character {
+	c := ranger(3, pets...)
+	c.Spellbooks = map[string]SpellState{"class:test": {Known: []string{"find_familiar"}}}
+	return c
+}
+
+func impLib() fakeLib {
+	lib := petLib()
+	lib.creatures["imp"] = Creature{ID: "imp", Name: "Imp", Tags: []string{"familiar", "chain_familiar"},
+		Abilities: map[Ability]int{Dex: 17}, AC: Formula{Base: 13}, HP: Formula{Base: 21}}
+	return lib
+}
+
+func TestPetWarnsWhenOwnerLacksItsSource(t *testing.T) {
+	imp := Pet{ID: "i", CreatureID: "imp", SourceID: "pact_of_the_chain", Status: PetActive, CurrentHP: 21}
+	p := petOf(t, mustCompute(t, caster(imp), impLib(), Ruleset{}), "i")
+	wantOnlyPetWarning(t, p, WarnPetSourceMissing)
+
+	// A companion whose owner has lost the feature and has no spellcasting at all still computes.
+	c := newChar(3, map[Ability]int{Wis: 16})
+	c.Classes = []ClassLevel{cls("other", 3)}
+	c.Pets = []Pet{{ID: "b", CreatureID: "beast_land", SourceID: "companion_feat", Status: PetActive, CurrentHP: 5}}
+	b := petOf(t, mustCompute(t, c, impLib(), Ruleset{}), "b")
+	if !hasPetWarning(b, WarnPetSourceMissing) || !hasPetWarning(b, WarnPetNoSpellcasting) || b.Attacks[0].ToHit != 0 {
+		t.Errorf("orphaned companion: to-hit %d, warnings %+v", b.Attacks[0].ToHit, b.Warnings)
+	}
+}
+
+func TestPetWarnsWhenCreatureNotAllowed(t *testing.T) {
+	imp := Pet{ID: "i", CreatureID: "imp", SourceID: "find_familiar", Status: PetActive, CurrentHP: 21}
+	wantOnlyPetWarning(t, petOf(t, mustCompute(t, caster(imp), impLib(), Ruleset{}), "i"), WarnPetNotAllowed)
+
+	lib := impLib()
+	ff := lib.spells["find_familiar"]
+	ff.Pets = &PetGrant{CreatureIDs: []string{"imp"}}
+	lib.spells["find_familiar"] = ff
+	wantOnlyPetWarning(t, petOf(t, mustCompute(t, caster(imp), lib, Ruleset{}), "i"), "")
+
+	ff.Pets = nil
+	lib.spells["find_familiar"] = ff
+	wantOnlyPetWarning(t, petOf(t, mustCompute(t, caster(imp), lib, Ruleset{}), "i"), WarnPetNotAllowed)
+}
+
+func TestOneActivePetPerSource(t *testing.T) {
+	owl := func(id string, s PetStatus) Pet {
+		return Pet{ID: id, CreatureID: "owl", SourceID: "find_familiar", Status: s, CurrentHP: 1}
+	}
+	sh := mustCompute(t, caster(owl("a", PetActive), owl("b", PetActive)), petLib(), Ruleset{})
+	wantOnlyPetWarning(t, petOf(t, sh, "a"), WarnPetTooMany)
+	wantOnlyPetWarning(t, petOf(t, sh, "b"), WarnPetTooMany)
+
+	sh = mustCompute(t, caster(owl("a", PetActive), owl("b", PetDismissed)), petLib(), Ruleset{})
+	wantOnlyPetWarning(t, petOf(t, sh, "a"), "")
+	wantOnlyPetWarning(t, petOf(t, sh, "b"), "")
+}
+
+func TestPetWarnsAboveMaxHP(t *testing.T) {
+	owl := Pet{ID: "o", CreatureID: "owl", SourceID: "find_familiar", Status: PetActive, CurrentHP: 5}
+	wantOnlyPetWarning(t, petOf(t, mustCompute(t, caster(owl), petLib(), Ruleset{}), "o"), WarnPetOverMaxHP)
+}
