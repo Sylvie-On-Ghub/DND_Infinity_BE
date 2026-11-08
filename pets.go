@@ -60,8 +60,6 @@ func petView(p Pet, c Character, sh Sheet, lib Library, skillDefs []SkillDef) Pe
 			fmt.Sprintf("%q doesn't allow a %s as a pet", p.SourceID, cr.Name)))
 	}
 	v.Languages = append(v.Languages, cr.Languages...)
-	v.Traits = append(v.Traits, cr.Traits...)
-	v.Actions = append(v.Actions, cr.Actions...)
 
 	owner := ownerContext(c, sh, lib, p.SourceID)
 	var badTerms []string
@@ -91,6 +89,14 @@ func petView(p Pet, c Character, sh Sheet, lib Library, skillDefs []SkillDef) Pe
 		return n
 	}
 	v.PB = pb
+	for _, tr := range cr.Traits {
+		tr.Description = fillOwnerPlaceholders(tr.Description, owner)
+		v.Traits = append(v.Traits, tr)
+	}
+	for _, a := range cr.Actions {
+		a.Description = fillOwnerPlaceholders(a.Description, owner)
+		v.Actions = append(v.Actions, a)
+	}
 
 	mods := append([]Modifier{}, cr.Modifiers...)
 	for _, m := range sh.petMods {
@@ -155,7 +161,7 @@ func petView(p Pet, c Character, sh Sheet, lib Library, skillDefs []SkillDef) Pe
 
 	for _, a := range cr.Attacks {
 		v.Attacks = append(v.Attacks, PetAttackView{
-			Name: a.Name, Type: a.Type, Range: attackRange(a), Description: a.Description,
+			Name: a.Name, Type: a.Type, Range: attackRange(a), Description: fillOwnerPlaceholders(a.Description, owner),
 			ToHit:  eval(a.ToHit) + k.sum(TargetAttackAll),
 			Damage: damageText(a.DamageDice, eval(a.Damage)+k.sum(TargetDamageAll), a.DamageType),
 		})

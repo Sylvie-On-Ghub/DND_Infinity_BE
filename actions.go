@@ -224,6 +224,7 @@ func ApplyRest(c *Character, sh Sheet, kind string) error {
 	switch kind {
 	case "short":
 		c.PactSlotsUsed = 0
+		c.Exhaustion = max(0, c.Exhaustion-sh.ShortRestExhaustion)
 		restoreResources(c, sh, func(r RechargeType) bool { return r == RechargeShortRest })
 		for _, r := range sh.Resources {
 			if r.Recharge != RechargeShortRest && r.ShortRestRegain > 0 {

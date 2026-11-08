@@ -881,6 +881,7 @@ var fixedTargets = map[string]bool{
 	TargetAttackRanged: true, TargetCheckAll: true, TargetSaveAll: true, TargetDeathSave: true,
 	TargetCarryCapacity: true, TargetJackOfAllTrades: true, TargetAttunementMax: true,
 	TargetDamageAll: true, TargetDamageMelee: true, TargetDamageRanged: true, TargetDamageSpell: true,
+	TargetShortRestExhaustion: true,
 }
 
 func isAbility(s string) bool {
@@ -1418,6 +1419,8 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 		PactSlots:        pactSlots,
 		ArmourProfs:      g.armour,
 		WeaponProfs:      g.weapons,
+
+		ShortRestExhaustion: k.sum(TargetShortRestExhaustion),
 	}
 	sh.Pets = petViews(c, sh, lib, skillDefs, acks)
 	return sh, nil
@@ -1538,6 +1541,9 @@ func evalFormula(f Formula, ctx formulaCtx) (int, []string) {
 		if !ok {
 			bad = append(bad, t.Source)
 			continue
+		}
+		if t.Mul > 1 {
+			x *= t.Mul
 		}
 		if t.Div > 1 {
 			x /= t.Div

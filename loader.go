@@ -703,6 +703,9 @@ func (v *validator) creatureFormula(id, where string, f Formula) {
 		if t.Div < 0 {
 			v.err("creature", id, "%s term %d: div cannot be negative", where, i+1)
 		}
+		if t.Mul < 0 {
+			v.err("creature", id, "%s term %d: mul cannot be negative", where, i+1)
+		}
 	}
 }
 
@@ -772,6 +775,9 @@ func (v *validator) formula(kind, id, where string, f Formula) {
 		}
 		if t.Div < 0 {
 			v.err(kind, id, "%s term %d: div cannot be negative", where, i+1)
+		}
+		if t.Mul < 0 {
+			v.err(kind, id, "%s term %d: mul cannot be negative", where, i+1)
 		}
 	}
 }

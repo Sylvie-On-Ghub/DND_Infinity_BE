@@ -294,3 +294,20 @@ func TestPetWarningsCanBeAcknowledged(t *testing.T) {
 		t.Errorf("pet warning = %+v, want acknowledged with the note", got)
 	}
 }
+
+func TestOwnerNumbersFillCreatureText(t *testing.T) {
+	lib := petLib()
+	beast := lib.creatures["beast_land"]
+	beast.Traits = []Trait{{Name: "Bond", Description: "Escape DC {owner.spell_save_dc}."}}
+	beast.Attacks[0].Description = "Grappled (escape DC {owner.spell_save_dc})."
+	beast.Actions = []Action{{Name: "Shove", Type: ActionBonusAction, Description: "Uses {owner.spell_attack}."}}
+	lib.creatures["beast_land"] = beast
+	c := ranger(3, Pet{ID: "b", CreatureID: "beast_land", SourceID: "companion_feat", Status: PetActive, CurrentHP: 20})
+	p := petOf(t, mustCompute(t, c, lib, Ruleset{}), "b")
+	if p.Traits[0].Description != "Escape DC 13." || p.Attacks[0].Description != "Grappled (escape DC 13)." || p.Actions[0].Description != "Uses +5." {
+		t.Errorf("trait %q, attack %q, action %q", p.Traits[0].Description, p.Attacks[0].Description, p.Actions[0].Description)
+	}
+	if lib.creatures["beast_land"].Traits[0].Description != "Escape DC {owner.spell_save_dc}." {
+		t.Error("filling in the sheet must not change the library's creature")
+	}
+}

@@ -112,6 +112,8 @@ const (
 	TargetDamageMelee      = "damage.melee"
 	TargetDamageRanged     = "damage.ranged"
 	TargetDamageSpell      = "damage.spell"
+	// TargetShortRestExhaustion is how many Exhaustion levels a Short Rest removes (Tireless).
+	TargetShortRestExhaustion = "rest.short.exhaustion"
 )
 
 func CantripDamageTarget(classID string) string { return "damage.cantrip." + classID } // that class's cantrips only
@@ -563,6 +565,8 @@ type Sheet struct {
 	ArmourProfs      []string                `json:"armour_profs"`
 	WeaponProfs      []string                `json:"weapon_profs"`
 	Pets             []PetView               `json:"pets"`
+	// ShortRestExhaustion is how many Exhaustion levels a Short Rest removes (from rest.short.exhaustion).
+	ShortRestExhaustion int `json:"short_rest_exhaustion,omitempty"`
 
 	petMods []Modifier // owner modifiers aimed at pets; read when computing pets, not part of the API
 }
@@ -615,6 +619,7 @@ type Term struct {
 	Source string `json:"source"`
 	Max    *int   `json:"max,omitempty"` // cap on this term, e.g. medium armour caps mod.dex at 2
 	Div    int    `json:"div,omitempty"` // divide this term (rounding down) before capping, e.g. half class level
+	Mul    int    `json:"mul,omitempty"` // multiply this term first, e.g. five times your ranger level
 }
 
 // Formula is Base plus its Terms. Reusable beyond AC later (resource maximums, spell save DCs...).

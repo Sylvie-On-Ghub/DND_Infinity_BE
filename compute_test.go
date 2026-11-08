@@ -1198,3 +1198,39 @@ func TestEvalFormulaOwnerTerms(t *testing.T) {
 		}
 	}
 }
+
+func TestFormulaTermMultiplier(t *testing.T) {
+	ctx := formulaCtx{owner: &ownerCtx{classLevels: map[string]int{"ranger": 7}}}
+	f := Formula{Base: 5, Terms: []Term{{Source: "owner.class_level.ranger", Mul: 5}}}
+	if got, bad := evalFormula(f, ctx); got != 40 || bad != nil {
+		t.Errorf("5 + 5 x level 7 = %d %v, want 40", got, bad)
+	}
+	half := Formula{Terms: []Term{{Source: "owner.class_level.ranger", Mul: 3, Div: 2, Max: intp(10)}}}
+	if got, _ := evalFormula(half, ctx); got != 10 {
+		t.Errorf("multiply, then divide, then cap: got %d, want 10", got)
+	}
+}
+
+func TestShortRestExhaustionModifier(t *testing.T) {
+	lib := fakeLib{features: map[string]Feature{"tireless": {ID: "tireless", Name: "Tireless", Modifiers: []Modifier{
+		{Target: TargetShortRestExhaustion, Kind: ModAdd, Value: 1, SourceID: "tireless"}}}}}
+	c := newChar(10, nil)
+	c.FeatureIDs = []string{"tireless"}
+	c.Exhaustion = 2
+	sh := mustCompute(t, c, lib, Ruleset{})
+	if sh.ShortRestExhaustion != 1 {
+		t.Fatalf("short_rest_exhaustion = %d, want 1", sh.ShortRestExhaustion)
+	}
+	if err := ApplyRest(&c, sh, "short"); err != nil || c.Exhaustion != 1 {
+		t.Errorf("after a short rest: exhaustion %d, err %v; want 1", c.Exhaustion, err)
+	}
+	c.Exhaustion = 0
+	if ApplyRest(&c, sh, "short"); c.Exhaustion != 0 {
+		t.Errorf("exhaustion can't go below 0: %d", c.Exhaustion)
+	}
+	plain := newChar(10, nil)
+	plain.Exhaustion = 2
+	if ApplyRest(&plain, mustCompute(t, plain, lib, Ruleset{}), "short"); plain.Exhaustion != 2 {
+		t.Errorf("without the modifier a short rest keeps exhaustion: %d", plain.Exhaustion)
+	}
+}
