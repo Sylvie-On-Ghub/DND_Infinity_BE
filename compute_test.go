@@ -15,11 +15,12 @@ import (
 // ---------------------------------------------------------------------------
 
 type fakeLib struct {
-	features map[string]Feature
-	items    map[string]Item
-	classes  map[string]Class
-	spells   map[string]Spell
-	lists    map[string]SpellList
+	features  map[string]Feature
+	items     map[string]Item
+	classes   map[string]Class
+	spells    map[string]Spell
+	lists     map[string]SpellList
+	creatures map[string]Creature
 }
 
 func (l fakeLib) Feature(id string) (Feature, error) {
@@ -64,6 +65,13 @@ func (l fakeLib) SpellList(id string) (SpellList, error) {
 		return s, nil
 	}
 	return SpellList{}, fmt.Errorf("no spell list %q", id)
+}
+
+func (l fakeLib) Creature(id string) (Creature, error) {
+	if c, ok := l.creatures[id]; ok {
+		return c, nil
+	}
+	return Creature{}, fmt.Errorf("no creature %q", id)
 }
 
 func intp(n int) *int { return &n }

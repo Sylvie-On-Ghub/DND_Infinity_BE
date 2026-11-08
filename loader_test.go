@@ -567,3 +567,92 @@ func TestLoadOrderIsAcceptedInPackJSON(t *testing.T) {
 		t.Errorf("load_order should be a known pack.json field: %v", err)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Creatures
+// ---------------------------------------------------------------------------
+
+const owlJSON = `{"id":"owl","name":"Owl","size":"Tiny","type":"beast","tags":["familiar"],
+	"abilities":{"str":3,"dex":13,"con":8,"int":2,"wis":12,"cha":7},
+	"ac":{"base":11},"hp":{"base":1},"speeds":{"walk":5,"fly":60},
+	"attacks":[{"name":"Talons","type":"action","reach":5,"to_hit":{"terms":[{"source":"mod.dex"},{"source":"pb"}]},
+		"damage":{"base":1},"damage_type":"slashing"}]}`
+
+func TestCreaturesLoad(t *testing.T) {
+	lib := mustLoad(t, LoadOptions{}, memPack("p", map[string]string{
+		"creatures/beasts/owl.json": owlJSON,
+		"creatures/primal.json": `{"id":"beast_land","name":"Beast of the Land","size":"Medium","type":"beast",
+			"abilities":{"str":14,"dex":14,"con":15,"int":8,"wis":14,"cha":11},
+			"ac":{"base":13,"terms":[{"source":"owner.mod.wis"}]},
+			"hp":{"base":5,"terms":[{"source":"owner.class_level.test"},{"source":"owner.class_level.test"},{"source":"owner.class_level.test"},{"source":"owner.class_level.test"},{"source":"owner.class_level.test"}]},
+			"pb":{"terms":[{"source":"owner.pb"}]},"speeds":{"walk":40}}`,
+		"classes/test.json": `{"id":"test","name":"Test","hit_die":8,"levels":[[]]}`,
+	}))
+	if lib.HasErrors() {
+		dumpIssues(t, lib)
+		t.Fatal("creatures should load without errors")
+	}
+	owl, err := lib.Creature("owl")
+	if err != nil || owl.Name != "Owl" || owl.Speeds[SpeedFly] != 60 {
+		t.Errorf("owl = %+v, %v; want Owl with fly 60", owl, err)
+	}
+	if n := lib.Counts()["creatures"]; n != 2 {
+		t.Errorf("creatures count = %d, want 2", n)
+	}
+	if _, err := lib.Creature("nope"); err == nil {
+		t.Error("an unknown creature should be an error")
+	}
+}
+
+func TestCreatureValidation(t *testing.T) {
+	cases := []struct {
+		name, file, body, want string
+	}{
+		{"unknown field", "creatures/x.json", `{"id":"x","name":"X","abilities":{"str":10},"bogus":1}`, "bogus"},
+		{"no abilities", "creatures/x.json", `{"id":"x","name":"X"}`, "abilities"},
+		{"bad owner term", "creatures/x.json", `{"id":"x","name":"X","abilities":{"str":10},"ac":{"terms":[{"source":"owner.nope"}]}}`, "owner.nope"},
+		{"bad attack dice", "creatures/x.json", `{"id":"x","name":"X","abilities":{"str":10},"attacks":[{"name":"Bite","type":"action","damage_dice":"lots","damage_type":"piercing"}]}`, "lots"},
+		{"owner term in a feature", "features/x.json", `{"id":"x","name":"X","ac_formulas":[{"id":"f","name":"F","formula":{"terms":[{"source":"owner.pb"}]}}]}`, "owner.pb"},
+		{"unknown granted creature", "features/x.json", `{"id":"x","name":"X","pets":{"creature_ids":["ghost"]}}`, "ghost"},
+		{"unknown granted creature on a spell", "spells/x.json", `{"id":"x","name":"X","level":1,"pets":{"creature_ids":["ghost"]}}`, "ghost"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			lib := mustLoad(t, LoadOptions{}, memPack("p", map[string]string{tc.file: tc.body}))
+			if !hasIssue(lib, SevError, tc.want) {
+				dumpIssues(t, lib)
+				t.Errorf("want an error mentioning %q", tc.want)
+			}
+		})
+	}
+}
+
+func TestPetGrantsLoad(t *testing.T) {
+	lib := mustLoad(t, LoadOptions{}, memPack("p", map[string]string{
+		"creatures/owl.json": owlJSON,
+		"features/x.json":    `{"id":"x","name":"X","pets":{"tags":["familiar"],"creature_ids":["owl"]}}`,
+		"spells/ff.json":     `{"id":"find_familiar","name":"Find Familiar","level":1,"pets":{"tags":["familiar"]}}`,
+	}))
+	if lib.HasErrors() {
+		dumpIssues(t, lib)
+		t.Fatal("pet grants should load")
+	}
+	if f, _ := lib.Feature("x"); f.Pets == nil || f.Pets.CreatureIDs[0] != "owl" {
+		t.Errorf("feature pets = %+v", f.Pets)
+	}
+	if s, _ := lib.Spell("find_familiar"); s.Pets == nil || s.Pets.Tags[0] != "familiar" {
+		t.Errorf("spell pets = %+v", s.Pets)
+	}
+}
+
+func TestLaterPackOverridesCreature(t *testing.T) {
+	lib := mustLoad(t, LoadOptions{},
+		memPack("a", map[string]string{"creatures/owl.json": owlJSON}),
+		memPack("b", map[string]string{"creatures/owl.json": `{"id":"owl","name":"Big Owl","abilities":{"str":10}}`}))
+	if owl, _ := lib.Creature("owl"); owl.Name != "Big Owl" {
+		t.Errorf("owl name = %q, want Big Owl", owl.Name)
+	}
+	if !hasIssue(lib, SevWarning, "overrides the creature") {
+		t.Error("want an override warning")
+	}
+}
