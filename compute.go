@@ -936,6 +936,15 @@ func validTarget(t string, skillIDs map[string]bool) bool {
 	return false
 }
 
+// markAcknowledged marks the warnings the character has acknowledged, with their notes.
+func markAcknowledged(ws []Warning, acks map[string]Acknowledgement) {
+	for i, w := range ws {
+		if a, ok := acks[w.Key]; ok {
+			ws[i].Acknowledged, ws[i].AckNote = true, a.Note
+		}
+	}
+}
+
 // splitPetTarget splits "pet.<tag>.<target>" into its tag and the target on the pet.
 func splitPetTarget(t string) (tag, inner string, ok bool) {
 	rest, ok := strings.CutPrefix(t, "pet.")
@@ -1362,11 +1371,9 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 			continue
 		}
 		seenKey[w.Key] = true
-		if a, ok := acks[w.Key]; ok {
-			w.Acknowledged, w.AckNote = true, a.Note
-		}
 		finalWarnings = append(finalWarnings, w)
 	}
+	markAcknowledged(finalWarnings, acks)
 
 	features := g.views
 	if features == nil {
@@ -1412,7 +1419,7 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 		ArmourProfs:      g.armour,
 		WeaponProfs:      g.weapons,
 	}
-	sh.Pets = petViews(c, sh, lib, skillDefs)
+	sh.Pets = petViews(c, sh, lib, skillDefs, acks)
 	return sh, nil
 }
 

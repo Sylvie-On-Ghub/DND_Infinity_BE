@@ -168,3 +168,25 @@ func TestLongRestHealsPets(t *testing.T) {
 		t.Errorf("a dead pet stays dead: %+v", p)
 	}
 }
+
+func TestLongRestKeepsAnOrphanedPetsHP(t *testing.T) {
+	lib := petLib()
+	c := caster(Pet{ID: "g", CreatureID: "gone", SourceID: "find_familiar", Status: PetActive, CurrentHP: 4, TempHP: 2})
+	if err := act(t, &c, lib, func(sh Sheet) error { return ApplyRest(&c, sh, "long") }); err != nil {
+		t.Fatal(err)
+	}
+	if p := c.Pets[0]; p.CurrentHP != 4 || p.TempHP != 2 {
+		t.Errorf("a pet whose creature is missing has no known max HP, so a rest must leave it alone: %+v", p)
+	}
+}
+
+func TestRecastingADeadPetBringsItBack(t *testing.T) {
+	lib := petLib()
+	c := caster(Pet{ID: "o", CreatureID: "owl", SourceID: "find_familiar", Status: PetDead, CurrentHP: 0})
+	if err := act(t, &c, lib, func(sh Sheet) error { return PatchPet(&c, sh, lib, "o", PetPatch{CreatureID: strp("beast_land")}) }); err != nil {
+		t.Fatal(err)
+	}
+	if p := c.Pets[0]; p.Status != PetActive || p.CurrentHP != 20 {
+		t.Errorf("a new form is a new summoning: %+v, want active at 20 HP", p)
+	}
+}

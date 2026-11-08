@@ -16,7 +16,7 @@ import (
 
 // petViews computes every pet, then warns where one source has more than one active pet
 // (one familiar at a time).
-func petViews(c Character, sh Sheet, lib Library, skillDefs []SkillDef) []PetView {
+func petViews(c Character, sh Sheet, lib Library, skillDefs []SkillDef, acks map[string]Acknowledgement) []PetView {
 	out := []PetView{}
 	active := map[string]int{}
 	for _, p := range c.Pets {
@@ -30,6 +30,7 @@ func petViews(c Character, sh Sheet, lib Library, skillDefs []SkillDef) []PetVie
 			out[i].Warnings = append(out[i].Warnings, mkWarning(WarnPetTooMany, v.ID, "", "", v.SourceID,
 				fmt.Sprintf("%d pets from %q are active at once; it allows one", active[v.SourceID], v.SourceID)))
 		}
+		markAcknowledged(out[i].Warnings, acks)
 	}
 	return out
 }
@@ -51,7 +52,7 @@ func petView(p Pet, c Character, sh Sheet, lib Library, skillDefs []SkillDef) Pe
 		return v
 	}
 	v.CreatureName, v.Size, v.Type = cr.Name, cr.Size, cr.Type
-	if !ownerHasSource(sh, p.SourceID) {
+	if !ownerHasSource(c, sh, p.SourceID) {
 		v.Warnings = append(v.Warnings, mkWarning(WarnPetSourceMissing, p.ID, "", "", p.SourceID,
 			fmt.Sprintf("%s comes from %q, which the character doesn't have", petLabel(p), p.SourceID)))
 	} else if !petAllowed(petGrantOf(lib, p.SourceID), cr) {
@@ -184,23 +185,27 @@ func petView(p Pet, c Character, sh Sheet, lib Library, skillDefs []SkillDef) Pe
 }
 
 // ownerHasSource reports whether the character has the feature, or can cast the spell, that grants a pet.
-func ownerHasSource(sh Sheet, sourceID string) bool {
+func ownerHasSource(c Character, sh Sheet, sourceID string) bool {
 	for _, fv := range sh.Features {
 		if fv.FeatureID == sourceID {
 			return true
 		}
 	}
-	_, ok := sourceCasting(sh, sourceID)
+	_, ok := sourceCasting(c, sh, sourceID)
 	return ok
 }
 
-// sourceCasting is the first spellcasting source that knows or has prepared this spell.
-func sourceCasting(sh Sheet, spellID string) (SpellSourceView, bool) {
+// sourceCasting is the first spellcasting source that knows or has prepared this spell, or has it in
+// its spellbook (a wizard ritual-casts Find Familiar from the book without preparing it).
+func sourceCasting(c Character, sh Sheet, spellID string) (SpellSourceView, bool) {
 	for _, s := range sh.Spellcasting {
 		for _, sp := range append(append([]SpellView{}, s.Spells...), s.Cantrips...) {
 			if sp.ID == spellID {
 				return s, true
 			}
+		}
+		if slices.Contains(c.Spellbooks[s.ID].Book, spellID) {
+			return s, true
 		}
 	}
 	return SpellSourceView{}, false
@@ -238,7 +243,7 @@ func ownerContext(c Character, sh Sheet, lib Library, sourceID string) ownerCtx 
 	for _, cl := range c.Classes {
 		o.classLevels[cl.ClassID] += cl.Level
 	}
-	if src, ok := ownerSpellSource(sh, lib, sourceID); ok {
+	if src, ok := ownerSpellSource(c, sh, lib, sourceID); ok {
 		o.spellAttack, o.spellSaveDC, o.hasSpellcasting = src.AttackBonus, src.SaveDC, true
 	}
 	return o
@@ -246,7 +251,7 @@ func ownerContext(c Character, sh Sheet, lib Library, sourceID string) ownerCtx 
 
 // ownerSpellSource finds the spellcasting a pet's source uses: a feature's own spell grant, its
 // class's spellcasting, or whichever source can cast the granting spell.
-func ownerSpellSource(sh Sheet, lib Library, sourceID string) (SpellSourceView, bool) {
+func ownerSpellSource(c Character, sh Sheet, lib Library, sourceID string) (SpellSourceView, bool) {
 	find := func(id string) (SpellSourceView, bool) {
 		for _, s := range sh.Spellcasting {
 			if s.ID == id {
@@ -267,7 +272,7 @@ func ownerSpellSource(sh Sheet, lib Library, sourceID string) (SpellSourceView, 
 		}
 		return SpellSourceView{}, false
 	}
-	return sourceCasting(sh, sourceID)
+	return sourceCasting(c, sh, sourceID)
 }
 
 func fillOwnerPlaceholders(note string, o ownerCtx) string {

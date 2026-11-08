@@ -255,8 +255,8 @@ Pet warnings go on the `PetView`. None of them reject a save.
 
 ### API
 
-Follows the inventory sub-route pattern: the per-character lock, version checks, strict request
-bodies, every route returns `{"sheet": ...}` plus any extra fields.
+Follows the inventory sub-route pattern: the per-character lock (action routes take no version,
+like inventory), strict request bodies, every route returns `{"sheet": ...}` plus any extra fields.
 
 | Route | Body | Does |
 |---|---|---|
@@ -316,7 +316,7 @@ TDD. New `pets_test.go`, in the style of the class test files, plus additions to
   `pet.*` modifiers never change the owner's own sheet.
 - **Warnings:** each case listed in Section 2.
 - **API:** add, patch, form swap resets HP, damage to 0 sets `dead`, healing doesn't revive,
-  conditions, delete, unknown pet 404, unknown creature 400, version conflict, long rest heals pets.
+  conditions, delete, unknown pet 404, unknown creature 400, long rest heals pets.
 - **Loader:** creatures load from any depth, a later pack overrides, unknown fields and bad
   `owner.*` placement are rejected.
 - **Store:** a character with no `pets` loads; one with stored `companion_ids` loads and drops it.

@@ -273,3 +273,24 @@ func TestPetWarnsAboveMaxHP(t *testing.T) {
 	owl := Pet{ID: "o", CreatureID: "owl", SourceID: "find_familiar", Status: PetActive, CurrentHP: 5}
 	wantOnlyPetWarning(t, petOf(t, mustCompute(t, caster(owl), petLib(), Ruleset{}), "o"), WarnPetOverMaxHP)
 }
+
+func TestFamiliarInAWizardsBookCountsAsTheSource(t *testing.T) {
+	lib := petLib()
+	lib.classes["book"] = Class{ID: "book", Name: "Book", HitDie: 6, Levels: make([][]string, 20),
+		Spellcasting: &SpellcastingDef{Ability: Int, Divisor: 1, Prep: PrepBook}}
+	c := newChar(1, map[Ability]int{Int: 16})
+	c.Classes = []ClassLevel{cls("book", 1)}
+	c.Spellbooks = map[string]SpellState{"class:book": {Book: []string{"find_familiar"}}} // in the book, not prepared
+	c.Pets = []Pet{{ID: "o", CreatureID: "owl", SourceID: "find_familiar", Status: PetActive, CurrentHP: 1}}
+	wantOnlyPetWarning(t, petOf(t, mustCompute(t, c, lib, Ruleset{}), "o"), "")
+}
+
+func TestPetWarningsCanBeAcknowledged(t *testing.T) {
+	c := caster(Pet{ID: "o", CreatureID: "owl", SourceID: "find_familiar", Status: PetActive, CurrentHP: 5})
+	w := petOf(t, mustCompute(t, c, petLib(), Ruleset{}), "o").Warnings[0]
+	c.Acknowledgements = []Acknowledgement{{Key: w.Key, Note: "DM approved"}}
+	got := petOf(t, mustCompute(t, c, petLib(), Ruleset{}), "o").Warnings[0]
+	if !got.Acknowledged || got.AckNote != "DM approved" {
+		t.Errorf("pet warning = %+v, want acknowledged with the note", got)
+	}
+}

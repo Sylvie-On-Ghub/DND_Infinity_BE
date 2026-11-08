@@ -38,8 +38,9 @@ func AddPet(c *Character, sh Sheet, lib Library, req AddPetRequest) (string, err
 	return p.ID, nil
 }
 
-// PatchPet edits a pet. A new creature_id is a new form: HP resets to its maximum and temp HP and
-// conditions clear. Bringing a dead pet back to active restores it to full HP.
+// PatchPet edits a pet. A new creature_id is a new form: HP resets to its maximum, temp HP and
+// conditions clear, and a dead pet comes back active. Bringing a dead pet back to active restores it
+// to full HP.
 func PatchPet(c *Character, sh Sheet, lib Library, petID string, patch PetPatch) error {
 	i, err := petIndex(c, petID)
 	if err != nil {
@@ -55,6 +56,9 @@ func PatchPet(c *Character, sh Sheet, lib Library, petID string, patch PetPatch)
 		}
 		p.CreatureID = *patch.CreatureID
 		p.CurrentHP, p.TempHP, p.Conditions = petMaxHP(p, *c, sh, lib), 0, nil
+		if p.Status == PetDead && patch.Status == nil {
+			p.Status = PetActive // a new form is a new summoning
+		}
 	}
 	if patch.Name != nil {
 		p.Name = *patch.Name
@@ -95,7 +99,8 @@ func ApplyPetHP(c *Character, sh Sheet, petID string, a HPAction) error {
 	if p.Status == PetDead && a.Heal != nil {
 		return nil
 	}
-	if err := applyHPTo(&p.CurrentHP, &p.TempHP, petViewMaxHP(sh, petID), a); err != nil {
+	maxHP, _ := petViewMaxHP(sh, petID)
+	if err := applyHPTo(&p.CurrentHP, &p.TempHP, maxHP, a); err != nil {
 		return err
 	}
 	if p.CurrentHP == 0 {
@@ -122,11 +127,13 @@ func ApplyPetConditions(c *Character, petID string, a ConditionsAction) error {
 	return nil
 }
 
-// restPets is the long-rest part for pets: every pet that isn't dead returns to full HP.
+// restPets is the long-rest part for pets: every pet that isn't dead returns to full HP. A pet whose
+// creature has gone from the library has no known maximum, so it is left as it is.
 func restPets(c *Character, sh Sheet) {
 	for i := range c.Pets {
-		if p := &c.Pets[i]; p.Status != PetDead {
-			p.CurrentHP, p.TempHP = petViewMaxHP(sh, p.ID), 0
+		p := &c.Pets[i]
+		if maxHP, ok := petViewMaxHP(sh, p.ID); ok && p.Status != PetDead {
+			p.CurrentHP, p.TempHP = maxHP, 0
 		}
 	}
 }
@@ -149,12 +156,13 @@ func petMaxHP(p Pet, c Character, sh Sheet, lib Library) int {
 	return petView(p, c, sh, lib, lib.Skills()).MaxHP
 }
 
-// petViewMaxHP reads a pet's maximum HP from the sheet.
-func petViewMaxHP(sh Sheet, petID string) int {
+// petViewMaxHP reads a pet's maximum HP from the sheet. ok is false when the sheet doesn't show the
+// pet or its creature isn't in the library.
+func petViewMaxHP(sh Sheet, petID string) (maxHP int, ok bool) {
 	for _, v := range sh.Pets {
 		if v.ID == petID {
-			return v.MaxHP
+			return v.MaxHP, !slices.ContainsFunc(v.Warnings, func(w Warning) bool { return w.Code == WarnUnknownID })
 		}
 	}
-	return 0
+	return 0, false
 }
