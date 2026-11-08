@@ -476,7 +476,7 @@ func TestAPIChoiceOptions(t *testing.T) {
 	rec = call(t, srv, http.MethodGet, "/api/characters/r1/choice-options?feature_id=rogue_asi_4&choice_id=feat", nil)
 	wantStatus(t, rec, http.StatusOK)
 	into(t, rec, &opts)
-	wantFeats := []string{"ability_score_improvement", "alert", "healer", "lucky", "sentinel", "skilled", "tough", "watchful"}
+	wantFeats := []string{"ability_score_improvement", "alert", "healer", "lucky", "musician", "sentinel", "skilled", "tough", "watchful"}
 	if len(opts) != len(wantFeats) {
 		t.Fatalf("feat options = %+v, want %v", opts, wantFeats)
 	}
@@ -520,7 +520,7 @@ func TestAPILevelUp(t *testing.T) {
 		t.Errorf("rolled hp = %v, want 8 (first level max), 5 (average), 7 (manual) and a d8 roll", hp)
 	}
 
-	wantError(t, call(t, srv, http.MethodPost, "/api/characters/new/level-up", `{"class_id":"bard"}`), http.StatusBadRequest, "bad_request")
+	wantError(t, call(t, srv, http.MethodPost, "/api/characters/new/level-up", `{"class_id":"no_such_class"}`), http.StatusBadRequest, "bad_request")
 }
 
 // ---------------------------------------------------------------------------
@@ -687,16 +687,16 @@ func TestAPIContent(t *testing.T) {
 		Warnings int            `json:"warnings"`
 	}
 	into(t, rec, &overview)
-	if overview.Counts["classes"] != 5 || overview.Counts["skills"] != 18 || overview.Errors != 0 {
-		t.Errorf("overview = %+v, want 5 classes, 18 skills and no errors", overview)
+	if overview.Counts["classes"] != 6 || overview.Counts["skills"] != 18 || overview.Errors != 0 {
+		t.Errorf("overview = %+v, want 6 classes, 18 skills and no errors", overview)
 	}
 
 	rec = call(t, srv, http.MethodGet, "/api/content/classes", nil)
 	wantStatus(t, rec, http.StatusOK)
 	var classes []ContentSummary
 	into(t, rec, &classes)
-	if len(classes) != 5 || classes[0].ID != "barbarian" || classes[1].ID != "cleric" || classes[2].ID != "rogue" || classes[3].ID != "warlock" || classes[4].ID != "wizard" {
-		t.Errorf("classes = %+v, want barbarian, cleric, rogue, warlock and wizard sorted by id", classes)
+	if len(classes) != 6 || classes[0].ID != "barbarian" || classes[1].ID != "bard" || classes[2].ID != "cleric" || classes[3].ID != "rogue" || classes[4].ID != "warlock" || classes[5].ID != "wizard" {
+		t.Errorf("classes = %+v, want barbarian, bard, cleric, rogue, warlock and wizard sorted by id", classes)
 	}
 
 	rec = call(t, srv, http.MethodGet, "/api/content/classes/rogue", nil)
@@ -715,7 +715,7 @@ func TestAPIContent(t *testing.T) {
 	}
 
 	wantError(t, call(t, srv, http.MethodGet, "/api/content/widgets", nil), http.StatusNotFound, "not_found")
-	wantError(t, call(t, srv, http.MethodGet, "/api/content/classes/bard", nil), http.StatusNotFound, "not_found")
+	wantError(t, call(t, srv, http.MethodGet, "/api/content/classes/no_such_class", nil), http.StatusNotFound, "not_found")
 	wantError(t, call(t, srv, http.MethodPost, "/api/content/classes", nil), http.StatusMethodNotAllowed, "method_not_allowed")
 	wantError(t, call(t, srv, http.MethodPost, "/api/content/reload", nil), http.StatusNotImplemented, "not_supported")
 }
@@ -739,8 +739,8 @@ func TestAPIReloadSwapsContent(t *testing.T) {
 	rec = call(t, srv, http.MethodGet, "/api/content/classes", nil)
 	var after []ContentSummary
 	into(t, rec, &after)
-	if len(after) != 5 {
-		t.Errorf("after reload: %+v, want 5 classes", after)
+	if len(after) != 6 {
+		t.Errorf("after reload: %+v, want 6 classes", after)
 	}
 }
 
@@ -758,7 +758,7 @@ func TestAPIFailedReloadKeepsOldContent(t *testing.T) {
 	rec = call(t, srv, http.MethodGet, "/api/content/classes", nil)
 	var classes []ContentSummary
 	into(t, rec, &classes)
-	if len(classes) != 5 {
+	if len(classes) != 6 {
 		t.Errorf("a failed reload must leave the old content in place, got %+v", classes)
 	}
 }

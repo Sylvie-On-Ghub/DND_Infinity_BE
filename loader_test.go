@@ -336,7 +336,7 @@ func noContentWarnings(t *testing.T, sh Sheet) {
 func TestExamplePackLoadsClean(t *testing.T) {
 	lib := loadExample(t)
 	c := lib.Counts()
-	if c["skills"] != 18 || c["classes"] != 5 || c["spell_lists"] != 3 {
+	if c["skills"] != 18 || c["classes"] != 6 || c["spell_lists"] != 5 {
 		t.Errorf("counts = %v", c)
 	}
 	for _, is := range lib.Issues() {

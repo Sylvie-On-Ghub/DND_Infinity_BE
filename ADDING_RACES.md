@@ -2,14 +2,14 @@
 
 You are adding a playable **race** to a D&D-style character backend written in Go. Races are **data, not code**:
 a race is a JSON file in a content pack, and the rules engine reads it. In almost every case you should
-**write JSON only and change no Go code**. A worked example, **Emberkin**, is in `content/races-example/`; read it
-before you start, and copy its shape.
+**write JSON only and change no Go code**. Worked examples are in `content/core-races/`: **Dragonborn** and **Elf**
+(see "Worked examples" below). Read them before you start, and copy their shape.
 
 ## What you will deliver
 
 1. A **content pack folder** containing your race(s) (and any spells they need).
 2. The output of the **content checker** showing `0 error(s)`.
-3. A **Go test** for each race (copy `emberkin_test.go`), if you can run Go.
+3. A **Go test** for each race (copy `dragonborn_test.go`), if you can run Go.
 4. A short **report**: files created, how to load them, the checker output, and anything in the source rules
    that the engine **cannot** express (see "Limits").
 
@@ -61,7 +61,7 @@ rule that fits none of them; those go in your report under "Limits".
 ### 2. Create the pack
 
 Create `content/<pack-name>/pack.json` and `content/<pack-name>/features/<race>.json`. Use unique,
-lowercase `snake_case` ids. Prefix every trait id with the race id (`emberkin_fire_resistance`) so ids never
+lowercase `snake_case` ids. Prefix every trait id with the race id (`dragonborn_breath_weapon`) so ids never
 collide with existing ones. Ids must not contain `@`. If an id repeats an existing one, your entry silently
 **replaces** it (reported as a warning), so only do that on purpose.
 
@@ -106,7 +106,7 @@ needs (see the reference below). Do not put `tags` on traits.
 
 ### 5. Add any spells
 
-Innate spells must exist. Put them in `content/<pack>/spells/<race>_spells.json` (see Emberkin's `kindle_flame`).
+Innate spells must exist. Put them in `content/<pack>/spells/<race>_spells.json` (see `content/core-races/spells/elf_spells.json`).
 A spell needs `id`, `name`, `level` (0 = cantrip), and text fields; add `attack: true` or `save: "<ability>"` and
 `effects` if it deals damage or heals. Spell dice must be plain `NdM` (for example `1d8`); put flat bonuses in
 the effect's `note`.
@@ -124,7 +124,7 @@ ones are none, or an override you intended. The last line must say `0 error(s)`.
 
 ### 7. Test it
 
-Copy `emberkin_test.go` to `<race>_test.go`, rename the helpers and ids, and assert what your race should put on
+Copy `dragonborn_test.go` to `<race>_test.go`, rename the helpers and ids, and assert what your race should put on
 the sheet. Run `go test ./...`. The helpers you can use are already defined in the package's test files:
 `loadExample`, `mustLoad`, `memPack`, `mustCompute`, `findPending`, `findSource`, `findSpell`, `realPending`,
 `noContentWarnings`, `hasWarning`, `hasWarningValue`, `dumpIssues`, and the engine's own `ChoiceOptions`.
@@ -214,27 +214,35 @@ State these plainly in your report instead of working around them with invented 
 - One race per file under `features/`, named after the race.
 - Keep each description short. The engine does not read it; people do.
 
-## Worked example: Emberkin
+## Worked examples: Dragonborn and Elf
 
-`content/races-example/` contains a complete race. In outline:
+Both live in `content/core-races/`, which loads after `content/example` and `content/classes`.
 
-- `features/emberkin.json` holds the race feature (tagged `race`) and seven traits.
+**Dragonborn** (`features/dragonborn.json`, tested by `dragonborn_test.go`):
+
 - The **race feature** carries the always-on numbers: 30 ft walking speed and darkvision 60. It changes no ability scores.
-  It grants two languages and five traits, and has a `lineage` choice (Cinder or Ash), each option granting one more trait.
-- **Fire Resistance** is a single `resist.fire` modifier.
-- **Ember Breath** is a `resource` (1 use, short rest) plus an action describing the cone.
-- **Kindle** is an innate cantrip: a `spells` block naming `kindle_flame` and Constitution as the casting ability.
-- **Ember Magic** shows spells unlocking by level: a feature with no spells of its own whose tiers add `scorching_burst` at level 3 and both `scorching_burst` and `smoldering_veil` at level 5, sharing one use per long rest.
-- **Forge Lore** is a skill choice limited to three skills.
-- **Cinder Lineage** adds 2 to initiative. **Ash Lineage** adds 30 ft of darkvision (it stacks with the race's 60 because they come from different features).
-- `spells/emberkin_spells.json` defines `kindle_flame`, with damage dice that scale at levels 5, 11 and 17.
-- `emberkin_test.go` shows the matching test: that ability scores are untouched, speed, senses, resistance, languages, the breath weapon and its resource, the spell source and its DC, the two pending choices, and both lineages.
+  It grants two languages and two traits, and has an `ancestry` choice with ten options, each granting one more trait.
+- **Breath Weapon** is a `resource` whose `tiers` raise its uses at levels 5, 9, 13 and 17, matching the Proficiency Bonus.
+  It has no action of its own.
+- Each **ancestry** trait (`dragonborn_ancestry_red` and so on) is a `resist.<type>` modifier plus tiers that carry the
+  breath action for its damage type, with dice rising at 5, 11 and 17. The action spends the shared uses through
+  `"resource_from": "dragonborn_breath_weapon"`.
+- **Draconic Flight** has only a level 5 tier, so its resource and Bonus Action appear from character level 5.
 
-Load it with:
+**Elf** (`features/elf.json`, tested by `elf_test.go`) covers spells:
+
+- A `lineage` choice, then a `spellcasting_ability` choice inside each lineage, picking which copy of the lineage's
+  magic feature applies.
+- The magic features use `tiers` that grant one more spell feature at level 3 and both at level 5 (a higher tier
+  replaces the lower one, so it lists both). Each spell feature has its own `spells` block and once-per-long-rest
+  `resource`. High Elf also has a cantrip `choice` from a spell pool.
+- `spells/elf_spells.json` defines the spells, including cantrips whose dice scale at 5, 11 and 17.
+
+Load them with:
 
 ```
-go run ./cmd/contentcheck content/example content/races-example
-go run ./cmd/dndserver -content content/example,content/races-example
+go run ./cmd/contentcheck content/example content/classes content/core-races
+go run ./cmd/dndserver -content content/example,content/classes,content/core-races
 ```
 
 ## Definition of done

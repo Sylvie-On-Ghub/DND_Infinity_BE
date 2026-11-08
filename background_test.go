@@ -6,6 +6,7 @@ package character
 
 import (
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -146,9 +147,9 @@ func TestLoaderWarnsWhenTagAndOriginDisagree(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestExampleScholarBackground(t *testing.T) {
-	lib := loadExample(t)
+	lib := loadElfLib(t)
 	c := Character{
-		ID: "s", Name: "Newcomer", BackgroundID: "scholar", RaceID: "stonefolk",
+		ID: "s", Name: "Newcomer", BackgroundID: "scholar", RaceID: "dwarf",
 		Abilities: map[Ability]AbilityScore{Con: {Score: 14}, Int: {Score: 12}, Wis: {Score: 10}},
 	}
 	sh := mustCompute(t, c, lib, Ruleset{})
@@ -173,21 +174,12 @@ func TestExampleScholarBackground(t *testing.T) {
 		t.Errorf("scholar tool proficiency missing: %+v", sh.Tools)
 	}
 
-	// The race: speed, darkvision, and the Powerful Build trait it grants.
-	if sh.Speeds[SpeedWalk] != 25 {
-		t.Errorf("walk speed = %d, want 25", sh.Speeds[SpeedWalk])
+	// The race: speed and darkvision.
+	if sh.Speeds[SpeedWalk] != 30 {
+		t.Errorf("walk speed = %d, want 30", sh.Speeds[SpeedWalk])
 	}
-	sawDark := false
-	for _, s := range sh.Senses {
-		if s.Name == "darkvision" && s.Range == 60 {
-			sawDark = true
-		}
-	}
-	if !sawDark {
-		t.Errorf("stonefolk should have 60 foot darkvision: %+v", sh.Senses)
-	}
-	if sh.Carry.Capacity != 300 { // Str 10 x 15, doubled by the granted Powerful Build
-		t.Errorf("carry capacity = %d, want 300", sh.Carry.Capacity)
+	if darkvision(sh) != 120 {
+		t.Errorf("a dwarf should have 120 foot darkvision: %+v", sh.Senses)
 	}
 
 	// Make the choices.
@@ -257,22 +249,26 @@ func TestBackgroundFeatAndALaterPickOfTheSameFeatStaySeparate(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestAPIBackgrounds(t *testing.T) {
-	srv, store := newTestServer(t)
+	srv, store := newTestServer(t, func(c *Config) { c.Library = loadElfLib(t) })
 	saveFixture(t, store, Character{ID: "new", Name: "Newcomer"})
 
 	rec := call(t, srv, http.MethodGet, "/api/content/backgrounds", nil)
 	wantStatus(t, rec, http.StatusOK)
 	var bgs []ContentSummary
 	into(t, rec, &bgs)
-	if len(bgs) != 7 || bgs[0].ID != "custom" || bgs[1].ID != "guard" || bgs[2].ID != "hermit" || bgs[3].ID != "scholar" || bgs[4].ID != "veteran" || bgs[5].ID != "wanderer" || bgs[6].ID != "wayfarer" {
-		t.Errorf("backgrounds = %+v, want custom, guard, hermit, scholar, veteran, wanderer, wayfarer", bgs)
+	if len(bgs) != 8 || bgs[0].ID != "custom" || bgs[1].ID != "entertainer" || bgs[2].ID != "guard" || bgs[3].ID != "hermit" || bgs[4].ID != "scholar" || bgs[5].ID != "veteran" || bgs[6].ID != "wanderer" || bgs[7].ID != "wayfarer" {
+		t.Errorf("backgrounds = %+v, want custom, entertainer, guard, hermit, scholar, veteran, wanderer, wayfarer", bgs)
 	}
 
 	rec = call(t, srv, http.MethodGet, "/api/content/races", nil)
 	var races []ContentSummary
 	into(t, rec, &races)
-	if len(races) != 1 || races[0].ID != "stonefolk" {
-		t.Errorf("races = %+v, want stonefolk", races)
+	ids := []string{}
+	for _, r := range races {
+		ids = append(ids, r.ID)
+	}
+	if !slices.Equal(ids, []string{"aasimar", "dragonborn", "dwarf", "elf", "gnome", "goliath", "halfling", "human", "orc", "tiefling"}) {
+		t.Errorf("races = %v, want dragonborn, dwarf, elf, gnome, human and tiefling", ids)
 	}
 
 	rec = call(t, srv, http.MethodGet, "/api/content/backgrounds/scholar", nil)
@@ -353,7 +349,7 @@ func TestPendingRace(t *testing.T) {
 }
 
 func TestAPIRaces(t *testing.T) {
-	srv, store := newTestServer(t)
+	srv, store := newTestServer(t, func(c *Config) { c.Library = loadElfLib(t) })
 	saveFixture(t, store, Character{ID: "new", Name: "Newcomer"})
 
 	sheetOf := func() Sheet {
@@ -367,13 +363,13 @@ func TestAPIRaces(t *testing.T) {
 	if _, ok := findPending(sheetOf(), "character", "race"); !ok {
 		t.Error("a new character should be asked to choose a race")
 	}
-	wantStatus(t, call(t, srv, http.MethodPatch, "/api/characters/new", withVersion(t, srv, "new", `{"race_id":"stonefolk"}`)), http.StatusOK)
+	wantStatus(t, call(t, srv, http.MethodPatch, "/api/characters/new", withVersion(t, srv, "new", `{"race_id":"dwarf"}`)), http.StatusOK)
 	sh := sheetOf()
 	if _, ok := findPending(sh, "character", "race"); ok {
 		t.Error("the race is chosen")
 	}
-	if sh.Speeds[SpeedWalk] != 25 {
-		t.Errorf("walk speed = %d, want 25 from the race", sh.Speeds[SpeedWalk])
+	if sh.Speeds[SpeedWalk] != 30 {
+		t.Errorf("walk speed = %d, want 30 from the race", sh.Speeds[SpeedWalk])
 	}
 }
 
