@@ -74,6 +74,14 @@ func (l fakeLib) Creature(id string) (Creature, error) {
 	return Creature{}, fmt.Errorf("no creature %q", id)
 }
 
+func (l fakeLib) Creatures() []Creature {
+	out := []Creature{}
+	for _, id := range sortedKeys(l.creatures) {
+		out = append(out, l.creatures[id])
+	}
+	return out
+}
+
 func intp(n int) *int { return &n }
 
 // cls builds a ClassLevel with a rolled HP entry for every level, so no HP pending item appears.

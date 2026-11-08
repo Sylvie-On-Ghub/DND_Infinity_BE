@@ -7,6 +7,7 @@ package character
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -641,6 +642,12 @@ func TestChainFamiliarWithInvestment(t *testing.T) {
 
 	if owl := petOf(t, sh, "owl"); len(owl.Warnings) != 0 {
 		t.Errorf("an owl from Find Familiar is allowed: %+v", owl.Warnings)
+	}
+	if ids := creatureIDs(petSourceOf(t, sh, "pact_of_the_chain")); !slices.Contains(ids, "imp") || !slices.Contains(ids, "owl") {
+		t.Errorf("Pact of the Chain choices = %v, want the special and normal forms", ids)
+	}
+	if ids := creatureIDs(petSourceOf(t, sh, "find_familiar")); slices.Contains(ids, "imp") || !slices.Contains(ids, "owl") {
+		t.Errorf("Find Familiar choices = %v, want normal forms only", ids)
 	}
 	if bad := petOf(t, sh, "bad"); !hasPetWarning(bad, WarnPetNotAllowed) {
 		t.Errorf("an imp from plain Find Familiar should warn: %+v", bad.Warnings)

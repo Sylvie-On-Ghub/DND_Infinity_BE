@@ -304,6 +304,7 @@ var fieldDocs = map[string]string{
 	"Sheet.pact_slots":               "Pact magic slots. Absent when the character has none.",
 	"Sheet.caster_level":             "Combined caster level for multiclass slot tables. Pact casters don't count.",
 	"Sheet.inventory":                "Resolved inventory entries with names, weights, costs and containers.",
+	"Sheet.pet_sources":              "The features and castable spells that let the character keep a pet (Find Familiar, Pact of the Chain, Primal Companion), each with the creatures it allows and how many active pets it has. Use one to add a pet.",
 	"Sheet.pets":                     "Each pet's computed stat block (scaled by its owner where the creature says so) and play state, with its own warnings.",
 	"Sheet.carry":                    "Carried weight against capacity, and the encumbrance state.",
 	"Sheet.attunement":               "Attuned items against the limit: the ruleset's max_attuned (default 3) changed by attunement.max modifiers. max is -1 when unlimited.",

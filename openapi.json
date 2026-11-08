@@ -892,6 +892,17 @@
         },
         "type": "object"
       },
+      "CreatureRef": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "CurrencyDef": {
         "properties": {
           "abbrev": {
@@ -1819,6 +1830,29 @@
         },
         "type": "object"
       },
+      "PetSourceView": {
+        "properties": {
+          "active": {
+            "type": "integer"
+          },
+          "creatures": {
+            "items": {
+              "$ref": "#/components/schemas/CreatureRef"
+            },
+            "type": "array"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "source_id": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "PetView": {
         "properties": {
           "abilities": {
@@ -2317,6 +2351,13 @@
             "description": "Choices the character is entitled to but hasn't made. Drives level-up flows. Fill them in with the selections endpoint.",
             "items": {
               "$ref": "#/components/schemas/PendingChoice"
+            },
+            "type": "array"
+          },
+          "pet_sources": {
+            "description": "The features and castable spells that let the character keep a pet (Find Familiar, Pact of the Chain, Primal Companion), each with the creatures it allows and how many active pets it has. Use one to add a pet.",
+            "items": {
+              "$ref": "#/components/schemas/PetSourceView"
             },
             "type": "array"
           },

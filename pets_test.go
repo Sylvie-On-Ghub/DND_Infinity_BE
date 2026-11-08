@@ -4,6 +4,7 @@ package character
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -309,5 +310,79 @@ func TestOwnerNumbersFillCreatureText(t *testing.T) {
 	}
 	if lib.creatures["beast_land"].Traits[0].Description != "Escape DC {owner.spell_save_dc}." {
 		t.Error("filling in the sheet must not change the library's creature")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Pet sources
+// ---------------------------------------------------------------------------
+
+func petSourceOf(t *testing.T, sh Sheet, id string) PetSourceView {
+	t.Helper()
+	for _, s := range sh.PetSources {
+		if s.SourceID == id {
+			return s
+		}
+	}
+	t.Fatalf("no pet source %q: %+v", id, sh.PetSources)
+	return PetSourceView{}
+}
+
+func creatureIDs(s PetSourceView) []string {
+	var out []string
+	for _, c := range s.Creatures {
+		out = append(out, c.ID)
+	}
+	return out
+}
+
+func TestPetSourcesListWhatTheCharacterCanSummon(t *testing.T) {
+	lib := impLib()
+	lib.classes["book"] = Class{ID: "book", Name: "Book", HitDie: 6, Levels: make([][]string, 20),
+		Spellcasting: &SpellcastingDef{Ability: Int, Divisor: 1, Prep: PrepBook}}
+	c := newChar(1, map[Ability]int{Int: 16})
+	c.Classes = []ClassLevel{cls("book", 1)}
+	c.Spellbooks = map[string]SpellState{"class:book": {Book: []string{"find_familiar"}}}
+	c.Pets = []Pet{
+		{ID: "a", CreatureID: "owl", SourceID: "find_familiar", Status: PetActive, CurrentHP: 1},
+		{ID: "b", CreatureID: "owl", SourceID: "find_familiar", Status: PetDismissed, CurrentHP: 1},
+	}
+	sh := mustCompute(t, c, lib, Ruleset{})
+	if len(sh.PetSources) != 1 {
+		t.Fatalf("pet sources = %+v, want just Find Familiar", sh.PetSources)
+	}
+	ff := petSourceOf(t, sh, "find_familiar")
+	if ff.Name != "Find Familiar" || ff.Kind != "spell" || ff.Active != 1 {
+		t.Errorf("find familiar source = %+v, want a spell with 1 active pet", ff)
+	}
+	if ids := creatureIDs(ff); !slices.Equal(ids, []string{"owl"}) || ff.Creatures[0].Name != "Owl" {
+		t.Errorf("find familiar creatures = %+v, want the owl only", ff.Creatures)
+	}
+}
+
+func TestPetSourcesFromFeatures(t *testing.T) {
+	lib := impLib()
+	lib.features["chain"] = Feature{ID: "chain", Name: "Chain", Pets: &PetGrant{Tags: []string{"chain_familiar"}, CreatureIDs: []string{"owl"}}}
+	c := caster()
+	c.FeatureIDs = []string{"chain"}
+	sh := mustCompute(t, c, lib, Ruleset{})
+
+	chain := petSourceOf(t, sh, "chain")
+	if chain.Kind != "feature" || !slices.Equal(creatureIDs(chain), []string{"imp", "owl"}) {
+		t.Errorf("chain source = %+v, want a feature allowing imp and owl", chain)
+	}
+	if ids := creatureIDs(petSourceOf(t, sh, "find_familiar")); !slices.Equal(ids, []string{"owl"}) {
+		t.Errorf("find familiar = %v, want owl", ids)
+	}
+	if ids := creatureIDs(petSourceOf(t, sh, "companion_feat")); !slices.Equal(ids, []string{"beast_land"}) {
+		t.Errorf("companion = %v, want beast_land", ids)
+	}
+}
+
+func TestPetSourcesIsEmptyNotNull(t *testing.T) {
+	sh := mustCompute(t, newChar(1, nil), fakeLib{}, Ruleset{}) // petLib's test class grants a companion
+	data, _ := json.Marshal(sh)
+	if !strings.Contains(string(data), `"pet_sources":[]`) {
+		t.Error(`a character with no pet sources should have "pet_sources":[]`)
 	}
 }

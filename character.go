@@ -565,6 +565,7 @@ type Sheet struct {
 	ArmourProfs      []string                `json:"armour_profs"`
 	WeaponProfs      []string                `json:"weapon_profs"`
 	Pets             []PetView               `json:"pets"`
+	PetSources       []PetSourceView         `json:"pet_sources"` // what the character can summon or keep as a pet
 	// ShortRestExhaustion is how many Exhaustion levels a Short Rest removes (from rest.short.exhaustion).
 	ShortRestExhaustion int `json:"short_rest_exhaustion,omitempty"`
 
@@ -599,6 +600,20 @@ type PetView struct {
 	Conditions   []Condition             `json:"conditions"`
 	Notes        []Modifier              `json:"notes"`
 	Warnings     []Warning               `json:"warnings"`
+}
+
+// PetSourceView is a feature or spell the character has that grants pets, with the creatures it allows.
+type PetSourceView struct {
+	SourceID  string        `json:"source_id"`
+	Name      string        `json:"name"`
+	Kind      string        `json:"kind"` // "feature" or "spell"
+	Creatures []CreatureRef `json:"creatures"`
+	Active    int           `json:"active"` // active pets from this source
+}
+
+type CreatureRef struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 type PetAttackView struct {
@@ -1143,6 +1158,7 @@ type Library interface {
 	Spell(id string) (Spell, error)
 	SpellList(id string) (SpellList, error)
 	Creature(id string) (Creature, error)
+	Creatures() []Creature // every creature, sorted by id: a pet grant's tags are matched against them
 	// Item, Race, Class ... added as needed
 }
 

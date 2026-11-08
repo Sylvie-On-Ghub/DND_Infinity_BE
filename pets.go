@@ -190,6 +190,48 @@ func petView(p Pet, c Character, sh Sheet, lib Library, skillDefs []SkillDef) Pe
 	return v
 }
 
+// petSources lists the features and castable spells the character has that grant pets, each with
+// the library creatures it allows and how many active pets it already has. Features come first.
+func petSources(c Character, sh Sheet, lib Library) []PetSourceView {
+	out := []PetSourceView{}
+	seen := map[string]bool{}
+	add := func(kind, id, name string, g *PetGrant) {
+		if g == nil || seen[kind+":"+id] {
+			return
+		}
+		seen[kind+":"+id] = true
+		v := PetSourceView{SourceID: id, Name: name, Kind: kind, Creatures: []CreatureRef{}}
+		for _, cr := range lib.Creatures() {
+			if petAllowed(g, cr) {
+				v.Creatures = append(v.Creatures, CreatureRef{ID: cr.ID, Name: cr.Name})
+			}
+		}
+		for _, p := range c.Pets {
+			if p.SourceID == id && p.Status == PetActive {
+				v.Active++
+			}
+		}
+		out = append(out, v)
+	}
+	for _, fv := range sh.Features {
+		if f, err := lib.Feature(fv.FeatureID); err == nil {
+			add("feature", f.ID, f.Name, f.Pets)
+		}
+	}
+	for _, s := range sh.Spellcasting {
+		ids := []string{}
+		for _, sp := range append(append([]SpellView{}, s.Spells...), s.Cantrips...) {
+			ids = append(ids, sp.ID)
+		}
+		for _, id := range append(ids, c.Spellbooks[s.ID].Book...) {
+			if sp, err := lib.Spell(id); err == nil {
+				add("spell", sp.ID, sp.Name, sp.Pets)
+			}
+		}
+	}
+	return out
+}
+
 // ownerHasSource reports whether the character has the feature, or can cast the spell, that grants a pet.
 func ownerHasSource(c Character, sh Sheet, sourceID string) bool {
 	for _, fv := range sh.Features {

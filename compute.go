@@ -1423,6 +1423,7 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 		ShortRestExhaustion: k.sum(TargetShortRestExhaustion),
 	}
 	sh.Pets = petViews(c, sh, lib, skillDefs, acks)
+	sh.PetSources = petSources(c, sh, lib)
 	return sh, nil
 }
 

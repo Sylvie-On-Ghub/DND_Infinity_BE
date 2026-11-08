@@ -151,6 +151,14 @@ func (l *ContentLibrary) Creature(id string) (Creature, error) {
 	return Creature{}, fmt.Errorf("creature %q not found", id)
 }
 
+func (l *ContentLibrary) Creatures() []Creature {
+	out := make([]Creature, 0, len(l.creatures))
+	for _, id := range sortedKeys(l.creatures) {
+		out = append(out, l.creatures[id])
+	}
+	return out
+}
+
 func (l *ContentLibrary) Skills() []SkillDef {
 	return append([]SkillDef(nil), l.skills...)
 }

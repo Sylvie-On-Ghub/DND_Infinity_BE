@@ -250,6 +250,9 @@ func TestBeastMasterPrimalCompanion(t *testing.T) {
 	if sky.MaxHP != 16 || sky.Attacks[0].Damage != "1d4+6 slashing" || sky.Speeds[SpeedFly] != 60 {
 		t.Errorf("sky beast: HP %d, %q, %v", sky.MaxHP, sky.Attacks[0].Damage, sky.Speeds)
 	}
+	if ids := creatureIDs(petSourceOf(t, sh, "beast_master_primal_companion")); !slices.Equal(ids, []string{"beast_of_the_land", "beast_of_the_sea", "beast_of_the_sky"}) {
+		t.Errorf("primal companion choices = %v", ids)
+	}
 	if !slices.ContainsFunc(sh.Actions, func(a Action) bool { return a.Name == "Command Companion" }) {
 		t.Error("Command Companion action missing")
 	}
