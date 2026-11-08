@@ -929,8 +929,24 @@ func validTarget(t string, skillIDs map[string]bool) bool {
 	case "spell":
 		class, ok := strings.CutPrefix(rest, "cantrips.")
 		return ok && class != ""
+	case "pet":
+		_, inner, ok := splitPetTarget(t)
+		return ok && validTarget(inner, skillIDs)
 	}
 	return false
+}
+
+// splitPetTarget splits "pet.<tag>.<target>" into its tag and the target on the pet.
+func splitPetTarget(t string) (tag, inner string, ok bool) {
+	rest, ok := strings.CutPrefix(t, "pet.")
+	if !ok {
+		return "", "", false
+	}
+	tag, inner, ok = strings.Cut(rest, ".")
+	if !ok || tag == "" || inner == "" {
+		return "", "", false
+	}
+	return tag, inner, true
 }
 
 // ---------------------------------------------------------------------------
@@ -1076,6 +1092,15 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 	}
 	g := gather(c, lib, totalLevel)
 	mods := dedupe(resolveAbilityValues(c, activeMods(g)))
+	// Modifiers aimed at pets are set aside: they never touch the owner, and pets read them later.
+	var petMods []Modifier
+	mods = slices.DeleteFunc(mods, func(m Modifier) bool {
+		if _, _, ok := splitPetTarget(m.Target); ok {
+			petMods = append(petMods, m)
+			return true
+		}
+		return false
+	})
 
 	// Inventory and carrying are worked out first: variant encumbrance comes back as ordinary modifiers.
 	invRes := computeInventory(c, lib, rules, newCalc(mods))
@@ -1353,6 +1378,7 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 	}
 
 	return Sheet{
+		petMods:          petMods,
 		Level:            level,
 		ProficiencyBonus: pb,
 		MaxHP:            maxHP,

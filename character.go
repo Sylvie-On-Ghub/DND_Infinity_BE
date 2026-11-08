@@ -126,6 +126,7 @@ func SenseTarget(name string) string            { return "sense." + name }      
 func ResistTarget(d DamageType) string          { return "resist." + string(d) } // ModSet/flag style
 func ImmuneTarget(d DamageType) string          { return "immune." + string(d) }
 func VulnTarget(d DamageType) string            { return "vuln." + string(d) }
+func PetTarget(tag, target string) string       { return "pet." + tag + "." + target } // that target on pets with this tag
 
 // Modifier is the single general-purpose modifier. Everything that tweaks a
 // derived number or reminds the player of a situational rule is one of these.
@@ -561,6 +562,8 @@ type Sheet struct {
 	Languages        []string                `json:"languages"` // merged from grants
 	ArmourProfs      []string                `json:"armour_profs"`
 	WeaponProfs      []string                `json:"weapon_profs"`
+
+	petMods []Modifier // owner modifiers aimed at pets; read when computing pets, not part of the API
 }
 
 // ---------------------------------------------------------------------------

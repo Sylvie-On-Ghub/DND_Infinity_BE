@@ -656,3 +656,24 @@ func TestLaterPackOverridesCreature(t *testing.T) {
 		t.Error("want an override warning")
 	}
 }
+
+func TestPetTargetsLoad(t *testing.T) {
+	load := func(target string) *ContentLibrary {
+		return mustLoad(t, LoadOptions{}, memPack("p", map[string]string{
+			"creatures/owl.json": owlJSON,
+			"features/x.json":    `{"id":"x","name":"X","modifiers":[{"target":"` + target + `","kind":"min","value":40}]}`,
+		}))
+	}
+	if lib := load("pet.familiar.speed.fly"); len(lib.Issues()) != 0 {
+		dumpIssues(t, lib)
+		t.Error("a pet target for a known tag should load cleanly")
+	}
+	if lib := load("pet.dragonish.ac"); lib.HasErrors() || !hasIssue(lib, SevWarning, "dragonish") {
+		dumpIssues(t, lib)
+		t.Error("a pet target for a tag no creature has should be a warning")
+	}
+	if lib := load("pet.familiar.bogus"); !hasIssue(lib, SevError, "pet.familiar.bogus") {
+		dumpIssues(t, lib)
+		t.Error("a pet target with a bad inner target should be an error")
+	}
+}

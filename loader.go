@@ -475,9 +475,12 @@ var (
 )
 
 type validator struct {
-	l      *ContentLibrary
-	skills map[string]bool
+	l       *ContentLibrary
+	skills  map[string]bool
+	petTags map[string]petTagUse // pet.<tag>.* targets seen, checked against creature tags at the end
 }
+
+type petTagUse struct{ kind, id string }
 
 func (v *validator) err(kind, id, format string, args ...any) {
 	v.l.issueAt(SevError, kind, id, format, args...)
@@ -488,7 +491,7 @@ func (v *validator) warn(kind, id, format string, args ...any) {
 }
 
 func (l *ContentLibrary) validate() {
-	v := &validator{l: l, skills: map[string]bool{}}
+	v := &validator{l: l, skills: map[string]bool{}, petTags: map[string]petTagUse{}}
 	for _, s := range l.skills {
 		v.skills[s.ID] = true
 	}
@@ -516,6 +519,19 @@ func (l *ContentLibrary) validate() {
 	for _, id := range sortedKeys(l.creatures) {
 		v.creature(l.creatures[id])
 	}
+
+	creatureTags := map[string]bool{}
+	for _, c := range l.creatures {
+		for _, tag := range c.Tags {
+			creatureTags[tag] = true
+		}
+	}
+	for _, tag := range sortedKeys(v.petTags) {
+		if !creatureTags[tag] {
+			u := v.petTags[tag]
+			v.warn(u.kind, u.id, "modifies pets tagged %q, but no creature has that tag", tag)
+		}
+	}
 }
 
 func (v *validator) featureRef(kind, id, where, ref string) {
@@ -535,6 +551,10 @@ func (v *validator) modifiers(kind, id, where string, mods []Modifier) {
 		at := fmt.Sprintf("%s modifier %d", where, i+1)
 		if !validTarget(m.Target, v.skills) {
 			v.err(kind, id, "%s: unknown target %q", at, m.Target)
+		} else if tag, _, ok := splitPetTarget(m.Target); ok {
+			if _, seen := v.petTags[tag]; !seen {
+				v.petTags[tag] = petTagUse{kind, id}
+			}
 		}
 		if !modKinds[m.Kind] {
 			v.err(kind, id, "%s: unknown kind %q (add, set, min, multiply, advantage, disadvantage, note)", at, m.Kind)
