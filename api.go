@@ -268,10 +268,48 @@ func (s *Server) setCORS(w http.ResponseWriter, r *http.Request) {
 // Router
 // ---------------------------------------------------------------------------
 
-func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+// accessLog is filled in while a request is served and logged once it's done.
+type accessLog struct {
+	http.ResponseWriter
+	status int
+	user   string // set by requireAuth
+}
+
+func (a *accessLog) WriteHeader(code int) {
+	if a.status == 0 {
+		a.status = code
+	}
+	a.ResponseWriter.WriteHeader(code)
+}
+
+func (a *accessLog) Write(b []byte) (int, error) {
+	if a.status == 0 {
+		a.status = http.StatusOK
+	}
+	return a.ResponseWriter.Write(b)
+}
+
+type accessLogKey struct{}
+
+func (s *Server) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	al := &accessLog{ResponseWriter: rw}
+	w := http.ResponseWriter(al)
+	r = r.WithContext(context.WithValue(r.Context(), accessLogKey{}, al))
+	defer func() {
+		user, status := al.user, al.status
+		if user == "" {
+			user = "-"
+		}
+		if status == 0 { // nothing written, so net/http sends 200
+			status = http.StatusOK
+		}
+		// No query string, headers or body: they can carry codes and tokens. %q stops a crafted path forging log lines.
+		log.Printf("%s %q %d %dms ip=%s user=%s", r.Method, r.URL.Path, status, time.Since(start).Milliseconds(), s.clientIP(r), user)
+	}()
 	defer func() {
 		if rec := recover(); rec != nil {
-			log.Printf("panic serving %s %s: %v", r.Method, r.URL.Path, rec)
+			log.Printf("panic serving %s %q: %v", r.Method, r.URL.Path, rec)
 			writeError(w, http.StatusInternalServerError, "internal", "something went wrong on the server")
 		}
 	}()
@@ -843,12 +881,16 @@ func (s *Server) reloadContent(w http.ResponseWriter, r *http.Request) {
 	}
 	fresh, err := s.reload()
 	if err != nil {
+		log.Printf("content reload by user %s failed: %v", userID(r), err)
 		writeError(w, http.StatusInternalServerError, "reload_failed", err.Error()+" (the previous content is still in use)")
 		return
 	}
 	s.mu.Lock()
 	s.lib = fresh
 	s.mu.Unlock()
+	c := fresh.Counts()
+	log.Printf("content reloaded by user %s: %d features, %d classes, %d items, %d spells, %d skills",
+		userID(r), c["features"], c["classes"], c["items"], c["spells"], c["skills"])
 	writeJSON(w, http.StatusOK, contentOverview(fresh))
 }
 

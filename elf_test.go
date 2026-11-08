@@ -247,7 +247,7 @@ func TestDefaultPacks(t *testing.T) {
 			t.Error(err)
 		}
 	}
-	for _, id := range []string{"elf", "tiefling", "emberkin"} {
+	for _, id := range []string{"aasimar", "dragonborn", "dwarf", "elf", "gnome", "goliath", "halfling", "human", "orc", "tiefling"} {
 		if _, err := lib.Lookup("races", id); err != nil {
 			t.Error(err)
 		}

@@ -85,6 +85,7 @@ func (a *Auth) Wait() {
 func (a *Auth) issueCode(ctx context.Context, username string) error {
 	u, err := UserByUsername(ctx, a.db, username)
 	if errors.Is(err, ErrUserNotFound) {
+		log.Printf("sign-in code: %q isn't an approved user, so nothing was sent", username)
 		return nil
 	}
 	if err != nil {
@@ -196,6 +197,7 @@ func writeRateLimited(w http.ResponseWriter, wait time.Duration) {
 func (s *Server) allowIP(w http.ResponseWriter, r *http.Request) bool {
 	ok, wait := s.auth.ipLimit.allow(s.clientIP(r))
 	if !ok {
+		log.Printf("sign-in: rate limited %s on %s", s.clientIP(r), r.URL.Path)
 		writeRateLimited(w, wait)
 	}
 	return ok
@@ -224,9 +226,11 @@ func (s *Server) requestCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if ok, wait := s.auth.requestLimit.allow(strings.ToLower(username)); !ok {
+		log.Printf("sign-in: rate limited code requests for %q (from %s)", username, s.clientIP(r))
 		writeRateLimited(w, wait)
 		return
 	}
+	log.Printf("sign-in: code requested for %q from %s", username, s.clientIP(r))
 	s.auth.RequestCode(username)
 	writeJSON(w, http.StatusAccepted, OTPRequested{Message: "If that username is approved, a login code is on its way by Discord DM."})
 }
@@ -247,11 +251,13 @@ func (s *Server) verifyCode(w http.ResponseWriter, r *http.Request) {
 	}
 	key := strings.ToLower(username)
 	if ok, wait := s.auth.verifyLimit.peek(key); !ok {
+		log.Printf("sign-in: rate limited code guesses for %q (from %s)", username, s.clientIP(r))
 		writeRateLimited(w, wait)
 		return
 	}
 	token, expires, err := s.auth.VerifyCode(r.Context(), username, strings.TrimSpace(req.Code))
 	if errors.Is(err, errBadCode) {
+		log.Printf("sign-in: wrong or expired code for %q from %s", username, s.clientIP(r))
 		s.auth.verifyLimit.record(key)
 		writeUnauthorized(w, errBadCode.Error())
 		return
@@ -260,5 +266,6 @@ func (s *Server) verifyCode(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	log.Printf("sign-in: %q signed in from %s", username, s.clientIP(r))
 	writeJSON(w, http.StatusOK, SessionResponse{Token: token, ExpiresAt: expires})
 }

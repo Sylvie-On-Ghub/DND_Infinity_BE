@@ -172,6 +172,9 @@ func (s *Server) requireAuth(w http.ResponseWriter, r *http.Request, next func(h
 		s.fail(w, err)
 		return
 	}
+	if al, ok := r.Context().Value(accessLogKey{}).(*accessLog); ok {
+		al.user = id
+	}
 	next(w, r.WithContext(withUserID(r.Context(), id)))
 }
 
