@@ -356,7 +356,7 @@ func TestLoaderChecksSubclassSpellcasting(t *testing.T) {
 func TestExamplePackLoadsClean(t *testing.T) {
 	lib := loadExample(t)
 	c := lib.Counts()
-	if c["skills"] != 18 || c["classes"] != 7 || c["spell_lists"] != 5 {
+	if c["skills"] != 18 || c["classes"] != 9 || c["spell_lists"] != 6 {
 		t.Errorf("counts = %v", c)
 	}
 	for _, is := range lib.Issues() {
@@ -458,8 +458,8 @@ func TestExampleWizardEndToEnd(t *testing.T) {
 	if !ok {
 		t.Fatalf("no wizard source in %+v", sh.Spellcasting)
 	}
-	if src.SaveDC != 14 || src.CantripsAllowed != 4 || src.SpellsAllowed != 8 { // 8+3+3; table; 3 + level 5
-		t.Errorf("DC %d, cantrips allowed %d, spells allowed %d; want 14, 4, 8", src.SaveDC, src.CantripsAllowed, src.SpellsAllowed)
+	if src.SaveDC != 14 || src.CantripsAllowed != 4 || src.SpellsAllowed != 9 { // 8+3+3; table; table
+		t.Errorf("DC %d, cantrips allowed %d, spells allowed %d; want 14, 4, 9", src.SaveDC, src.CantripsAllowed, src.SpellsAllowed)
 	}
 	bolt, ok := findSpell(src.Cantrips, "fire_bolt")
 	if !ok || len(bolt.Effects) != 1 || bolt.Effects[0].Dice != "2d10" {
@@ -473,8 +473,8 @@ func TestExampleWizardEndToEnd(t *testing.T) {
 	if p, ok := findPending(sh, "spells:class:wizard", "cantrips"); !ok || p.Remaining != 2 {
 		t.Errorf("expected 2 cantrips pending, got %+v", sh.PendingChoices)
 	}
-	if p, ok := findPending(sh, "spells:class:wizard", "prepared"); !ok || p.Remaining != 5 {
-		t.Errorf("expected 5 prepared spells pending, got %+v", sh.PendingChoices)
+	if p, ok := findPending(sh, "spells:class:wizard", "prepared"); !ok || p.Remaining != 6 {
+		t.Errorf("expected 6 prepared spells pending, got %+v", sh.PendingChoices)
 	}
 
 	found := false

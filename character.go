@@ -132,13 +132,14 @@ func VulnTarget(d DamageType) string            { return "vuln." + string(d) }
 // What a Modifier can require. The armour ones switch it on or off for the whole sheet; the weapon ones
 // apply it only to the attacks that qualify.
 const (
-	RequiresArmour          = "armour"                    // a suit of armour is equipped; a shield doesn't count
-	RequiresNoHeavyOrShield = "no_heavy_armour_or_shield" // no heavy armour and no shield is equipped
-	RequiresNoHeavy         = "no_heavy_armour"           // no heavy armour is equipped; a shield is fine
-	RequiresOneWeapon       = "one_handed_melee_alone"    // a melee weapon that isn't two-handed, with no other weapon equipped
-	RequiresThrown          = "thrown_weapon"             // an attack made by throwing a weapon
-	RequiresMeleeWeapon     = "melee_weapon"              // an attack made with a melee weapon, so not an unarmed strike
-	RequiresWeapon          = "weapon"                    // an attack made with any weapon, melee, ranged or thrown
+	RequiresArmour           = "armour"                    // a suit of armour is equipped; a shield doesn't count
+	RequiresNoHeavyOrShield  = "no_heavy_armour_or_shield" // no heavy armour and no shield is equipped
+	RequiresNoHeavy          = "no_heavy_armour"           // no heavy armour is equipped; a shield is fine
+	RequiresNoArmourOrShield = "no_armour_or_shield"       // no armour and no shield is equipped (Monk)
+	RequiresOneWeapon        = "one_handed_melee_alone"    // a melee weapon that isn't two-handed, with no other weapon equipped
+	RequiresThrown           = "thrown_weapon"             // an attack made by throwing a weapon
+	RequiresMeleeWeapon      = "melee_weapon"              // an attack made with a melee weapon, so not an unarmed strike
+	RequiresWeapon           = "weapon"                    // an attack made with any weapon, melee, ranged or thrown
 )
 
 type Modifier struct {

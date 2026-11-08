@@ -789,6 +789,8 @@ func activeMods(g *gathered) []Modifier {
 			return g.heavyWorn || g.shieldWorn
 		case RequiresNoHeavy:
 			return g.heavyWorn
+		case RequiresNoArmourOrShield:
+			return g.armourWorn || g.shieldWorn
 		}
 		g.warnings = append(g.warnings, mkWarning(WarnUnknownRequires, m.SourceID, "", m.Target, m.Requires,
 			fmt.Sprintf("modifier on %q requires %q, which isn't recognised, so it has no effect", m.Target, m.Requires)))
