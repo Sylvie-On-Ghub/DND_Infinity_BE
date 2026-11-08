@@ -1377,7 +1377,7 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 		pending = []PendingChoice{}
 	}
 
-	return Sheet{
+	sh := Sheet{
 		petMods:          petMods,
 		Level:            level,
 		ProficiencyBonus: pb,
@@ -1411,7 +1411,12 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 		PactSlots:        pactSlots,
 		ArmourProfs:      g.armour,
 		WeaponProfs:      g.weapons,
-	}, nil
+	}
+	sh.Pets = []PetView{}
+	for _, p := range c.Pets {
+		sh.Pets = append(sh.Pets, petView(p, c, sh, lib, skillDefs))
+	}
+	return sh, nil
 }
 
 // ---------------------------------------------------------------------------

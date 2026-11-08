@@ -562,8 +562,48 @@ type Sheet struct {
 	Languages        []string                `json:"languages"` // merged from grants
 	ArmourProfs      []string                `json:"armour_profs"`
 	WeaponProfs      []string                `json:"weapon_profs"`
+	Pets             []PetView               `json:"pets"`
 
 	petMods []Modifier // owner modifiers aimed at pets; read when computing pets, not part of the API
+}
+
+// PetView is a pet's computed stat block plus its play state.
+type PetView struct {
+	ID           string                  `json:"id"`
+	Name         string                  `json:"name"`
+	CreatureID   string                  `json:"creature_id"`
+	CreatureName string                  `json:"creature_name"`
+	SourceID     string                  `json:"source_id"`
+	Status       PetStatus               `json:"status"`
+	Size         string                  `json:"size"`
+	Type         string                  `json:"type"`
+	Abilities    map[Ability]AbilityView `json:"abilities"`
+	AC           int                     `json:"ac"`
+	MaxHP        int                     `json:"max_hp"`
+	CurrentHP    int                     `json:"current_hp"`
+	TempHP       int                     `json:"temp_hp"`
+	PB           int                     `json:"proficiency_bonus"`
+	Speeds       map[SpeedType]int       `json:"speeds"`
+	Senses       []Sense                 `json:"senses"`
+	Skills       map[string]SkillView    `json:"skills"`
+	Resistances  []DamageType            `json:"resistances"`
+	Immunities   []DamageType            `json:"immunities"`
+	Languages    []string                `json:"languages"`
+	Traits       []Trait                 `json:"traits"`
+	Attacks      []PetAttackView         `json:"attacks"`
+	Actions      []Action                `json:"actions"`
+	Conditions   []Condition             `json:"conditions"`
+	Notes        []Modifier              `json:"notes"`
+	Warnings     []Warning               `json:"warnings"`
+}
+
+type PetAttackView struct {
+	Name        string     `json:"name"`
+	Type        ActionType `json:"type"`
+	Range       string     `json:"range"` // "reach 5 ft." or "80/320 ft."
+	ToHit       int        `json:"to_hit"`
+	Damage      string     `json:"damage"` // "1d8+5 piercing"
+	Description string     `json:"description,omitempty"`
 }
 
 // ---------------------------------------------------------------------------
