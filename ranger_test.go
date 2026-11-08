@@ -137,23 +137,38 @@ func TestRangerRoving(t *testing.T) {
 func TestRangerFightingStyleOrDruidicWarrior(t *testing.T) {
 	lib := loadWarlockLib(t)
 	c := rangerChar(2, "")
-	sh := mustCompute(t, c, lib, Ruleset{})
-	if _, ok := findPending(sh, "ranger_fighting_style", "style"); !ok {
+	if _, ok := findPending(mustCompute(t, c, lib, Ruleset{}), "ranger_fighting_style", "style"); !ok {
 		t.Error("a level 2 ranger should have a fighting style to choose")
 	}
-
-	c.Selections = append(c.Selections, Selection{FeatureID: "ranger_fighting_style", ChoiceID: "druidic_warrior", Picked: []string{"guidance", "starry_wisp"}})
-	sh = mustCompute(t, c, lib, Ruleset{})
-	noContentWarnings(t, sh)
-	if _, ok := findPending(sh, "ranger_fighting_style", "style"); ok {
-		t.Error("Druidic Warrior replaces the fighting style feat")
+	opts, err := ChoiceOptions(c, lib, Ruleset{}, "ranger_fighting_style", "style")
+	if err != nil {
+		t.Fatal(err)
 	}
-	dw, ok := findSource(sh, "feature:ranger_fighting_style")
+	dwOpt := slices.IndexFunc(opts, func(o EligibleOption) bool { return o.OptionID == "druidic_warrior" })
+	if dwOpt < 0 || !opts[dwOpt].Eligible {
+		t.Fatalf("Druidic Warrior should be an eligible option in the ranger's style list: %+v", opts)
+	}
+
+	c.Selections = append(c.Selections, Selection{FeatureID: "ranger_fighting_style", ChoiceID: "style", Picked: []string{"druidic_warrior"}})
+	if p, ok := findPending(mustCompute(t, c, lib, Ruleset{}), "druidic_warrior", "cantrips"); !ok || p.Remaining != 2 {
+		t.Errorf("Druidic Warrior should then ask for two cantrips: %+v (found %v)", p, ok)
+	}
+
+	c.Selections = append(c.Selections, Selection{FeatureID: "druidic_warrior", ChoiceID: "cantrips", Picked: []string{"guidance", "starry_wisp"}})
+	sh := mustCompute(t, c, lib, Ruleset{})
+	noContentWarnings(t, sh)
+	if _, ok := findPending(sh, "druidic_warrior", "cantrips"); ok {
+		t.Error("nothing should be pending once the cantrips are picked")
+	}
+	dw, ok := findSource(sh, "feature:druidic_warrior")
 	if !ok || dw.Ability != Wis || len(dw.Spells)+len(dw.Cantrips) != 2 {
 		t.Errorf("Druidic Warrior cantrips = %+v (found %v)", dw, ok)
 	}
+	if _, ok := findWarning(sh, WarnPrereqUnmet); ok {
+		t.Error("a ranger meets Druidic Warrior's prerequisite")
+	}
 
-	c.Selections[len(c.Selections)-1] = Selection{FeatureID: "ranger_fighting_style", ChoiceID: "druidic_warrior", Picked: []string{"guidance", "fireball"}}
+	c.Selections[len(c.Selections)-1].Picked = []string{"guidance", "fireball"}
 	if _, ok := findWarning(mustCompute(t, c, lib, Ruleset{}), WarnNotInPool); !ok {
 		t.Error("Druidic Warrior only offers druid cantrips")
 	}

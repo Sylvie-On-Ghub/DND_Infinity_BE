@@ -63,12 +63,12 @@ func TestFighterBasics(t *testing.T) {
 func TestFighterFightingStyles(t *testing.T) {
 	lib := loadElfLib(t)
 	opts, err := ChoiceOptions(fighterAt(1), lib, Ruleset{}, "fighter_fighting_style", "style")
-	if err != nil || len(opts) != 10 {
-		t.Fatalf("styles = %+v (err %v), want 10", opts, err)
+	if err != nil || len(opts) != 11 {
+		t.Fatalf("styles = %+v (err %v), want 10 feats and Druidic Warrior", opts, err)
 	}
 	for _, o := range opts {
-		if !o.Eligible {
-			t.Errorf("a fighter should qualify for %s: %+v", o.OptionID, o)
+		if want := o.OptionID != "druidic_warrior"; o.Eligible != want { // Druidic Warrior is the Ranger's alternative
+			t.Errorf("%s: eligible = %v, want %v", o.OptionID, o.Eligible, want)
 		}
 	}
 
@@ -210,7 +210,7 @@ func TestFightingStylesAreNotGeneralFeats(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, o := range opts {
-			if strings.HasPrefix(o.OptionID, "style_") {
+			if strings.HasPrefix(o.OptionID, "style_") || o.OptionID == "druidic_warrior" {
 				t.Errorf("%s offers the Fighting Style %s as a feat", feature, o.OptionID)
 			}
 		}
@@ -218,12 +218,13 @@ func TestFightingStylesAreNotGeneralFeats(t *testing.T) {
 	// A Champion's second style still comes from the same pool, minus the one already taken.
 	c := fighterSub(7, "champion", Selection{FeatureID: "fighter_fighting_style", ChoiceID: "style", Picked: []string{"style_dueling"}})
 	opts, err := ChoiceOptions(c, lib, Ruleset{}, "champion_additional_fighting_style", "style")
-	if err != nil || len(opts) != 10 {
-		t.Fatalf("second style options = %d (err %v), want 10", len(opts), err)
+	if err != nil || len(opts) != 11 {
+		t.Fatalf("second style options = %d (err %v), want 10 feats and Druidic Warrior", len(opts), err)
 	}
 	for _, o := range opts {
-		if o.Eligible == (o.OptionID == "style_dueling") {
-			t.Errorf("%+v: only Dueling, already taken, should be ineligible", o)
+		// Dueling is already taken; Druidic Warrior is only for Rangers.
+		if o.Eligible == (o.OptionID == "style_dueling" || o.OptionID == "druidic_warrior") {
+			t.Errorf("%+v: only Dueling and Druidic Warrior should be ineligible", o)
 		}
 	}
 }
