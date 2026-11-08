@@ -13,7 +13,7 @@ func aasimarChar(level int) Character {
 	return Character{
 		ID: "a", RaceID: "aasimar",
 		Abilities: map[Ability]AbilityScore{Cha: {Score: 16}},
-		Classes:   []ClassLevel{{ClassID: "rogue", Level: level}},
+		Classes:   []ClassLevel{{ClassID: "fighter", Level: level}},
 	}
 }
 

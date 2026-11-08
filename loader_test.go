@@ -333,10 +333,30 @@ func noContentWarnings(t *testing.T, sh Sheet) {
 	}
 }
 
+func TestLoaderChecksSubclassSpellcasting(t *testing.T) {
+	lib, _ := LoadPacks(LoadOptions{}, memPack("p", map[string]string{
+		"classes/c.json": `{"id":"c","name":"C","hit_die":8,"levels":[],"subclass_level":3,
+			"spellcasting":{"ability":"int","divisor":1,"prep":"prepared"},
+			"subclasses":[
+				{"id":"both","name":"Both","levels":[],"spellcasting":{"ability":"int","divisor":3,"prep":"prepared"}},
+				{"id":"bad","name":"Bad","levels":[],"spellcasting":{"ability":"luck","divisor":3,"prep":"prepared","spell_list_id":"nope"}}]}`,
+	}))
+	for _, want := range []string{
+		`subclass "both" has spellcasting, but so does the class`,
+		`subclass "bad" spellcasting: ability "luck" is not an ability`,
+		`subclass "bad" spellcasting: unknown spell list "nope"`,
+	} {
+		if !hasIssue(lib, SevError, want) {
+			t.Errorf("missing error %q", want)
+			dumpIssues(t, lib)
+		}
+	}
+}
+
 func TestExamplePackLoadsClean(t *testing.T) {
 	lib := loadExample(t)
 	c := lib.Counts()
-	if c["skills"] != 18 || c["classes"] != 6 || c["spell_lists"] != 5 {
+	if c["skills"] != 18 || c["classes"] != 7 || c["spell_lists"] != 5 {
 		t.Errorf("counts = %v", c)
 	}
 	for _, is := range lib.Issues() {

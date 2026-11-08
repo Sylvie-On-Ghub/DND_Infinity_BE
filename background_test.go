@@ -213,6 +213,38 @@ func TestExampleBackgroundFeats(t *testing.T) {
 	}
 }
 
+func TestExampleCriminalBackground(t *testing.T) {
+	lib := loadExample(t)
+	c := Character{ID: "c", BackgroundID: "criminal", Abilities: map[Ability]AbilityScore{Dex: {Score: 14}, Con: {Score: 12}, Int: {Score: 10}}}
+	sh := mustCompute(t, c, lib, Ruleset{})
+	noContentWarnings(t, sh)
+	if sh.Skills["sleight_of_hand"].Level != ProfTrained || sh.Skills["stealth"].Level != ProfTrained {
+		t.Errorf("sleight of hand %q, stealth %q; want both trained", sh.Skills["sleight_of_hand"].Level, sh.Skills["stealth"].Level)
+	}
+	if _, ok := sh.Tools["thieves_tools"]; !ok {
+		t.Errorf("tools = %v, want thieves_tools", sh.Tools)
+	}
+	if sh.Initiative != 2+5 { // Dex +2, plus the Alert feat
+		t.Errorf("initiative = %d, want 7", sh.Initiative)
+	}
+	if p, ok := findPending(sh, "criminal", "scores"); !ok || p.Remaining != 3 {
+		t.Errorf("scores pending = %+v (found %v), want 3 points", p, ok)
+	}
+	opts, err := ChoiceOptions(c, lib, Ruleset{}, "criminal", "scores")
+	if err != nil || len(opts) != 3 || opts[0].OptionID != "dex" || opts[1].OptionID != "con" || opts[2].OptionID != "int" {
+		t.Errorf("score options = %+v (err %v), want dex, con, int", opts, err)
+	}
+
+	c.Selections = []Selection{{FeatureID: "criminal", ChoiceID: "scores", Allocated: map[string]int{"dex": 2, "con": 1}}}
+	sh = mustCompute(t, c, lib, Ruleset{})
+	if sh.Abilities[Dex].Score != 16 || sh.Abilities[Con].Score != 13 || sh.Abilities[Int].Score != 10 {
+		t.Errorf("Dex %d, Con %d, Int %d; want 16, 13, 10", sh.Abilities[Dex].Score, sh.Abilities[Con].Score, sh.Abilities[Int].Score)
+	}
+	if left := realPending(sh); len(left) != 0 {
+		t.Errorf("everything is decided, but %+v is pending", left)
+	}
+}
+
 // Skilled is repeatable: the background's copy and one taken later at a feat level are separate.
 func TestBackgroundFeatAndALaterPickOfTheSameFeatStaySeparate(t *testing.T) {
 	lib := loadExample(t)
@@ -256,8 +288,8 @@ func TestAPIBackgrounds(t *testing.T) {
 	wantStatus(t, rec, http.StatusOK)
 	var bgs []ContentSummary
 	into(t, rec, &bgs)
-	if len(bgs) != 8 || bgs[0].ID != "custom" || bgs[1].ID != "entertainer" || bgs[2].ID != "guard" || bgs[3].ID != "hermit" || bgs[4].ID != "scholar" || bgs[5].ID != "veteran" || bgs[6].ID != "wanderer" || bgs[7].ID != "wayfarer" {
-		t.Errorf("backgrounds = %+v, want custom, entertainer, guard, hermit, scholar, veteran, wanderer, wayfarer", bgs)
+	if len(bgs) != 9 || bgs[0].ID != "criminal" || bgs[1].ID != "custom" || bgs[2].ID != "entertainer" || bgs[3].ID != "guard" || bgs[4].ID != "hermit" || bgs[5].ID != "scholar" || bgs[6].ID != "veteran" || bgs[7].ID != "wanderer" || bgs[8].ID != "wayfarer" {
+		t.Errorf("backgrounds = %+v, want criminal, custom, entertainer, guard, hermit, scholar, veteran, wanderer, wayfarer", bgs)
 	}
 
 	rec = call(t, srv, http.MethodGet, "/api/content/races", nil)
@@ -267,8 +299,8 @@ func TestAPIBackgrounds(t *testing.T) {
 	for _, r := range races {
 		ids = append(ids, r.ID)
 	}
-	if !slices.Equal(ids, []string{"aasimar", "dragonborn", "dwarf", "elf", "gnome", "goliath", "halfling", "human", "orc", "tiefling"}) {
-		t.Errorf("races = %v, want dragonborn, dwarf, elf, gnome, human and tiefling", ids)
+	if want := []string{"aasimar", "dragonborn", "dwarf", "elf", "gnome", "goblin", "goliath", "halfling", "human", "orc", "tiefling"}; !slices.Equal(ids, want) {
+		t.Errorf("races = %v, want %v", ids, want)
 	}
 
 	rec = call(t, srv, http.MethodGet, "/api/content/backgrounds/scholar", nil)

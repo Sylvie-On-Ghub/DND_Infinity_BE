@@ -11,7 +11,7 @@ func goliathChar(level int, ancestry string) Character {
 	c := Character{
 		ID: "g", RaceID: "goliath",
 		Abilities: map[Ability]AbilityScore{Str: {Score: 15}},
-		Classes:   []ClassLevel{{ClassID: "rogue", Level: level}},
+		Classes:   []ClassLevel{{ClassID: "fighter", Level: level}},
 	}
 	if ancestry != "" {
 		c.Selections = []Selection{{FeatureID: "goliath", ChoiceID: "giant_ancestry", Picked: []string{ancestry}}}

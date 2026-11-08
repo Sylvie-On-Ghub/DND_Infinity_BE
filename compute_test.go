@@ -6,6 +6,7 @@ package character
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 )
 
@@ -744,6 +745,44 @@ func rogueChar(level int) Character {
 	c := newChar(level, nil)
 	c.Classes = []ClassLevel{cls("rogue", level)}
 	return c
+}
+
+// A subclass with its own spellcasting makes a non-casting class a caster, but only once it's chosen.
+func TestSubclassSpellcasting(t *testing.T) {
+	lib := rogueLib()
+	rogue := lib.classes["rogue"]
+	rogue.Subclasses = append(slices.Clone(rogue.Subclasses), Subclass{ID: "trickster", Name: "Trickster",
+		Spellcasting: &SpellcastingDef{Ability: Int, Divisor: 3, StartLevel: 3, Prep: PrepPrepared}})
+	rogue.Levels = [][]string{{"sneak_attack"}, {}, {}, {}, {}, {}, {}}
+	lib.classes["rogue"] = rogue
+
+	slots := func(level int, sub string) []int {
+		c := rogueChar(level)
+		c.Classes[0].SubclassID = sub
+		out := []int{}
+		for _, s := range mustCompute(t, c, lib, Ruleset{}).SpellSlots {
+			out = append(out, s.Max)
+		}
+		return out
+	}
+	for _, tc := range []struct {
+		level int
+		sub   string
+		want  []int
+	}{{3, "trickster", []int{2}}, {7, "trickster", []int{4, 2}}, {3, "thief", nil}, {2, "", nil}} {
+		if got := slots(tc.level, tc.sub); !slices.Equal(got, tc.want) && !(len(got) == 0 && len(tc.want) == 0) {
+			t.Errorf("level %d %q: slots %v, want %v", tc.level, tc.sub, got, tc.want)
+		}
+	}
+	c := rogueChar(3)
+	c.Classes[0].SubclassID = "trickster"
+	found := false
+	for _, s := range mustCompute(t, c, lib, Ruleset{}).Spellcasting {
+		found = found || (s.ID == "class:rogue" && s.Ability == Int)
+	}
+	if !found {
+		t.Error("the trickster should have a class:rogue spell source using Intelligence")
+	}
 }
 
 func TestTierSelectionByClassLevel(t *testing.T) {

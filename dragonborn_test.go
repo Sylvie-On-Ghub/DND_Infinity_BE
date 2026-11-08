@@ -12,7 +12,7 @@ func dragonbornChar(level int, ancestry string) Character {
 	c := Character{
 		ID: "d", RaceID: "dragonborn",
 		Abilities: map[Ability]AbilityScore{Con: {Score: 14}},
-		Classes:   []ClassLevel{{ClassID: "rogue", Level: level}},
+		Classes:   []ClassLevel{{ClassID: "fighter", Level: level}},
 	}
 	if ancestry != "" {
 		c.Selections = []Selection{{FeatureID: "dragonborn", ChoiceID: "ancestry", Picked: []string{ancestry}}}

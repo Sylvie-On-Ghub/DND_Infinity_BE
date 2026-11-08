@@ -13,7 +13,7 @@ func orcChar(level int) Character {
 	return Character{
 		ID: "o", RaceID: "orc",
 		Abilities: map[Ability]AbilityScore{Str: {Score: 16}},
-		Classes:   []ClassLevel{{ClassID: "rogue", Level: level}},
+		Classes:   []ClassLevel{{ClassID: "fighter", Level: level}},
 	}
 }
 

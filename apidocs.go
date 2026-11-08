@@ -282,6 +282,7 @@ var fieldDocs = map[string]string{
 	"Sheet.caster_level":             "Combined caster level for multiclass slot tables. Pact casters don't count.",
 	"Sheet.inventory":                "Resolved inventory entries with names, weights, costs and containers.",
 	"Sheet.carry":                    "Carried weight against capacity, and the encumbrance state.",
+	"Sheet.attunement":               "Attuned items against the limit: the ruleset's max_attuned (default 3) changed by attunement.max modifiers. max is -1 when unlimited.",
 	"Sheet.wallet":                   "Coins by denomination and their total value in base units.",
 	"Sheet.resources":                "Limited-use feature resources with uses spent.",
 	"Sheet.features":                 "Every feature the character has, from classes, subclasses, race, background, feats and choices, in the order they resolved. The race and background themselves are listed too.",

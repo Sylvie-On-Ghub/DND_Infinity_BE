@@ -329,6 +329,17 @@
         },
         "type": "object"
       },
+      "AttunementView": {
+        "properties": {
+          "attuned": {
+            "type": "integer"
+          },
+          "max": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
       "CarryView": {
         "properties": {
           "capacity": {
@@ -1979,6 +1990,14 @@
             },
             "type": "array"
           },
+          "attunement": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AttunementView"
+              }
+            ],
+            "description": "Attuned items against the limit: the ruleset's max_attuned (default 3) changed by attunement.max modifiers. max is -1 when unlimited."
+          },
           "carry": {
             "allOf": [
               {
@@ -2641,6 +2660,9 @@
           },
           "name": {
             "type": "string"
+          },
+          "spellcasting": {
+            "$ref": "#/components/schemas/SpellcastingDef"
           }
         },
         "type": "object"

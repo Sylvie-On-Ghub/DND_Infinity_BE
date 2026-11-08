@@ -955,29 +955,40 @@ func (v *validator) class(c Class) {
 				v.featureRef(k, c.ID, fmt.Sprintf("subclass %q level %d", sub.ID, i+1), fid)
 			}
 		}
+		if sub.Spellcasting != nil {
+			if c.Spellcasting != nil {
+				v.err(k, c.ID, "subclass %q has spellcasting, but so does the class; only one can", sub.ID)
+			}
+			v.spellcasting(k, c.ID, fmt.Sprintf("subclass %q spellcasting", sub.ID), *sub.Spellcasting)
+		}
 	}
 
 	if sc := c.Spellcasting; sc != nil {
-		if !isAbility(string(sc.Ability)) {
-			v.err(k, c.ID, "spellcasting: ability %q is not an ability", sc.Ability)
+		v.spellcasting(k, c.ID, "spellcasting", *sc)
+	}
+}
+
+// spellcasting checks a class's (or subclass's) spellcasting block; at says which, for messages.
+func (v *validator) spellcasting(k, id, at string, sc SpellcastingDef) {
+	if !isAbility(string(sc.Ability)) {
+		v.err(k, id, "%s: ability %q is not an ability", at, sc.Ability)
+	}
+	if sc.Divisor < 0 {
+		v.err(k, id, "%s: divisor cannot be negative", at)
+	}
+	if sc.Divisor == 0 && !sc.Pact {
+		v.warn(k, id, "%s: divisor 0 and not pact casting, so this class gets no slots", at)
+	}
+	if !prepModes[sc.Prep] {
+		v.err(k, id, "%s: prep %q must be known, prepared or book", at, sc.Prep)
+	}
+	if sc.SpellListID != "" {
+		if _, ok := v.l.lists[sc.SpellListID]; !ok {
+			v.err(k, id, "%s: unknown spell list %q", at, sc.SpellListID)
 		}
-		if sc.Divisor < 0 {
-			v.err(k, c.ID, "spellcasting: divisor cannot be negative")
-		}
-		if sc.Divisor == 0 && !sc.Pact {
-			v.warn(k, c.ID, "spellcasting: divisor 0 and not pact casting, so this class gets no slots")
-		}
-		if !prepModes[sc.Prep] {
-			v.err(k, c.ID, "spellcasting: prep %q must be known, prepared or book", sc.Prep)
-		}
-		if sc.SpellListID != "" {
-			if _, ok := v.l.lists[sc.SpellListID]; !ok {
-				v.err(k, c.ID, "spellcasting: unknown spell list %q", sc.SpellListID)
-			}
-		}
-		if sc.PreparedFormula != nil {
-			v.formula(k, c.ID, "spellcasting prepared formula", *sc.PreparedFormula)
-		}
+	}
+	if sc.PreparedFormula != nil {
+		v.formula(k, id, at+" prepared formula", *sc.PreparedFormula)
 	}
 }
 

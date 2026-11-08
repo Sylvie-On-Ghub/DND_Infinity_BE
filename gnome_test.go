@@ -4,15 +4,16 @@ package character
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
 
-// gnomeChar is a rogue gnome of the lineage with the spellcasting ability chosen.
+// gnomeChar is a fighter gnome of the lineage with the spellcasting ability chosen.
 func gnomeChar(lineage, ability string, level int) Character {
 	c := Character{
 		ID: "g", RaceID: "gnome",
 		Abilities: map[Ability]AbilityScore{Int: {Score: 16}, Wis: {Score: 14}, Cha: {Score: 12}},
-		Classes:   []ClassLevel{{ClassID: "rogue", Level: level}},
+		Classes:   []ClassLevel{{ClassID: "fighter", Level: level}},
 	}
 	if lineage != "" {
 		c.Selections = append(c.Selections, Selection{FeatureID: "gnome", ChoiceID: "lineage", Picked: []string{lineage}})
@@ -98,7 +99,9 @@ func TestRockGnome(t *testing.T) {
 	if a, ok := actionNamed(sh, "Clockwork Device"); !ok || a.Duration != "8 hours" {
 		t.Errorf("Clockwork Device = %+v", a)
 	}
-	if len(sh.Resources) != 0 {
-		t.Errorf("rock gnome cantrips need no uses: %+v", sh.Resources)
+	for _, r := range sh.Resources {
+		if strings.Contains(r.FeatureID, "gnome") {
+			t.Errorf("rock gnome cantrips need no uses: %+v", r)
+		}
 	}
 }

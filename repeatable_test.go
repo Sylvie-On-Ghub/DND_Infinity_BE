@@ -138,6 +138,8 @@ func TestExampleASITakenTwice(t *testing.T) {
 			{FeatureID: "class:rogue:start", ChoiceID: "skills", Picked: []string{"stealth", "perception", "acrobatics", "sleight_of_hand"}},
 			{FeatureID: "rogue_expertise_1", ChoiceID: "expertise", Picked: []string{"stealth", "sleight_of_hand"}},
 			{FeatureID: "rogue_expertise_6", ChoiceID: "expertise", Picked: []string{"perception", "acrobatics"}},
+			{FeatureID: "rogue_thieves_cant", ChoiceID: "language", Picked: []string{"elvish"}},
+			{FeatureID: "rogue_weapon_mastery", ChoiceID: "weapons", Picked: []string{"dagger", "shortbow"}},
 			featPick("rogue_asi_4", "ability_score_improvement"),
 			featPick("rogue_asi_8", "ability_score_improvement"),
 			{FeatureID: "ability_score_improvement@rogue_asi_4:feat", ChoiceID: "scores", Allocated: map[string]int{"dex": 2}},

@@ -389,6 +389,45 @@ func TestConvertCoins(t *testing.T) {
 // Attunement and custom items
 // ---------------------------------------------------------------------------
 
+func TestAttunementMaxModifier(t *testing.T) {
+	four := strChar(10,
+		InventoryItem{ItemID: "ring", Quantity: 1, Attuned: true},
+		InventoryItem{ItemID: "ring", Quantity: 1, Attuned: true},
+		InventoryItem{ItemID: "ring", Quantity: 1, Attuned: true},
+		InventoryItem{ItemID: "ring", Quantity: 1, Attuned: true},
+	)
+	for _, tc := range []struct {
+		name  string
+		rules Ruleset
+		mods  []Modifier
+		max   int
+		over  bool
+	}{
+		{"default", Ruleset{}, nil, 3, true},
+		{"min 4 (Use Magic Device)", Ruleset{}, []Modifier{{Target: TargetAttunementMax, Kind: ModMin, Value: 4}}, 4, false},
+		{"min 4 under a higher ruleset limit", Ruleset{MaxAttuned: 5}, []Modifier{{Target: TargetAttunementMax, Kind: ModMin, Value: 4}}, 5, false},
+		{"add 1", Ruleset{}, []Modifier{{Target: TargetAttunementMax, Kind: ModAdd, Value: 1}}, 4, false},
+		{"reduced below zero", Ruleset{}, []Modifier{{Target: TargetAttunementMax, Kind: ModAdd, Value: -5}}, 0, true},
+		{"unlimited stays unlimited", Ruleset{MaxAttuned: -1}, []Modifier{{Target: TargetAttunementMax, Kind: ModMin, Value: 4}}, -1, false},
+		{"conditional modifiers don't count", Ruleset{}, []Modifier{{Target: TargetAttunementMax, Kind: ModAdd, Value: 1, Condition: "on Tuesdays"}}, 3, true},
+	} {
+		c := four
+		c.Modifiers = tc.mods
+		sh := mustCompute(t, c, gearLib(), tc.rules)
+		if sh.Attunement != (AttunementView{Attuned: 4, Max: tc.max}) {
+			t.Errorf("%s: attunement = %+v, want 4 of %d", tc.name, sh.Attunement, tc.max)
+		}
+		if got := hasWarning(sh, WarnOverAttunement); got != tc.over {
+			t.Errorf("%s: over-attunement warning = %v, want %v", tc.name, got, tc.over)
+		}
+		for _, w := range sh.Warnings {
+			if w.Code == WarnUnknownTarget {
+				t.Errorf("%s: %s", tc.name, w.Message)
+			}
+		}
+	}
+}
+
 func TestAttunementLimit(t *testing.T) {
 	four := strChar(10,
 		InventoryItem{ItemID: "ring", Quantity: 1, Attuned: true},

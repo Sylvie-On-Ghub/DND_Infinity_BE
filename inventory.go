@@ -77,15 +77,16 @@ func encumbranceModifiers(heavy bool) []Modifier {
 }
 
 type inventoryResult struct {
-	views    []InventoryView
-	wallet   WalletView
-	carry    CarryView
-	mods     []Modifier // variant encumbrance penalties
-	warnings []Warning
+	views      []InventoryView
+	wallet     WalletView
+	carry      CarryView
+	attunement AttunementView
+	mods       []Modifier // variant encumbrance penalties
+	warnings   []Warning
 }
 
-// computeInventory takes k0, a calc built from the modifiers so far, only to read the Strength score
-// and carry_capacity; the encumbrance modifiers it returns are added before the final calc is built.
+// computeInventory takes k0, a calc built from the modifiers so far, only to read the Strength score,
+// carry_capacity and attunement.max; the encumbrance modifiers it returns are added before the final calc is built.
 func computeInventory(c Character, lib Library, rules Ruleset, k0 *calc) inventoryResult {
 	res := inventoryResult{views: []InventoryView{}}
 
@@ -232,12 +233,18 @@ func computeInventory(c Character, lib Library, rules Ruleset, k0 *calc) invento
 		}
 	}
 
-	// Attunement limit.
+	// Attunement limit: the ruleset's, changed by features. An unlimited ruleset stays unlimited.
 	maxAttuned := rules.MaxAttuned
 	if maxAttuned == 0 {
 		maxAttuned = 3
 	}
-	if maxAttuned > 0 && attuned > maxAttuned {
+	if maxAttuned > 0 {
+		maxAttuned = max(k0.apply(TargetAttunementMax, maxAttuned), 0)
+	} else {
+		maxAttuned = -1
+	}
+	res.attunement = AttunementView{Attuned: attuned, Max: maxAttuned}
+	if maxAttuned >= 0 && attuned > maxAttuned {
 		res.warnings = append(res.warnings, mkWarning(WarnOverAttunement, "", "", "attunement", fmt.Sprint(attuned),
 			fmt.Sprintf("%d items are attuned but the limit is %d", attuned, maxAttuned)))
 	}

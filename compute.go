@@ -877,7 +877,7 @@ var fixedTargets = map[string]bool{
 	TargetAC: true, TargetInitiative: true, TargetMaxHP: true, TargetProficiencyBonus: true,
 	TargetSpellSaveDC: true, TargetSpellAttack: true, TargetAttackAll: true, TargetAttackMelee: true,
 	TargetAttackRanged: true, TargetCheckAll: true, TargetSaveAll: true, TargetDeathSave: true,
-	TargetCarryCapacity: true, TargetJackOfAllTrades: true,
+	TargetCarryCapacity: true, TargetJackOfAllTrades: true, TargetAttunementMax: true,
 	TargetDamageAll: true, TargetDamageMelee: true, TargetDamageRanged: true, TargetDamageSpell: true,
 }
 
@@ -1378,6 +1378,7 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 		Inventory:        invRes.views,
 		Wallet:           invRes.wallet,
 		Carry:            invRes.carry,
+		Attunement:       invRes.attunement,
 		SpellSlots:       spellSlots,
 		PactSlots:        pactSlots,
 		ArmourProfs:      g.armour,
@@ -1925,8 +1926,8 @@ func (g *gathered) expandClasses(c Character, lib Library, queue []queued, seen 
 		}
 
 		var subExtra, subGranted []string
+		var sub *Subclass
 		if cl.SubclassID != "" {
-			var sub *Subclass
 			for j := range class.Subclasses {
 				if class.Subclasses[j].ID == cl.SubclassID {
 					sub = &class.Subclasses[j]
@@ -1966,8 +1967,12 @@ func (g *gathered) expandClasses(c Character, lib Library, queue []queued, seen 
 			})
 		}
 
-		if class.Spellcasting != nil {
-			g.casters = append(g.casters, casterEntry{classID: class.ID, name: class.Name, level: cl.Level, def: *class.Spellcasting, extra: subExtra, granted: subGranted})
+		def := class.Spellcasting
+		if def == nil && sub != nil {
+			def = sub.Spellcasting
+		}
+		if def != nil {
+			g.casters = append(g.casters, casterEntry{classID: class.ID, name: class.Name, level: cl.Level, def: *def, extra: subExtra, granted: subGranted})
 		}
 	}
 	return queue

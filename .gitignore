@@ -12,3 +12,11 @@
 
 # Secrets
 .env
+
+# Build output (scripts/deploy-pi.sh)
+/build/
+
+# Pi deploy script and the binaries built for it
+/scripts/deploy-pi.sh
+/dndserver
+/dnd-admin

@@ -107,7 +107,8 @@ const (
 	TargetSaveAll          = "save.all"  // every saving throw
 	TargetDeathSave        = "save.death"
 	TargetCarryCapacity    = "carry_capacity"
-	TargetDamageAll        = "damage.all" // flat and dice bonuses to weapon damage
+	TargetAttunementMax    = "attunement.max" // how many items can be attuned at once (Use Magic Device: min 4)
+	TargetDamageAll        = "damage.all"     // flat and dice bonuses to weapon damage
 	TargetDamageMelee      = "damage.melee"
 	TargetDamageRanged     = "damage.ranged"
 	TargetDamageSpell      = "damage.spell"
@@ -550,6 +551,7 @@ type Sheet struct {
 	Inventory        []InventoryView         `json:"inventory"`
 	Wallet           WalletView              `json:"wallet"`
 	Carry            CarryView               `json:"carry"`
+	Attunement       AttunementView          `json:"attunement"`
 	Notes            []Modifier              `json:"notes"` // situational reminders: advantage, "vs. poison", etc.
 	PendingChoices   []PendingChoice         `json:"pending_choices"`
 	Warnings         []Warning               `json:"warnings"`  // permissive validation output
@@ -744,6 +746,9 @@ type Subclass struct {
 	// class's spell source as always known/prepared and don't count against spells known or prepared.
 	// Unlike tiers these accumulate: every entry at or below the class level applies.
 	GrantedSpells []GrantedSpells `json:"granted_spells,omitempty"`
+	// Spellcasting makes the subclass a caster when its class isn't one (Eldritch Knight, Arcane
+	// Trickster). The source is still the class's ("class:rogue"), so spell picks and slots work the same.
+	Spellcasting *SpellcastingDef `json:"spellcasting,omitempty"`
 }
 
 type GrantedSpells struct {
@@ -982,6 +987,12 @@ const (
 	CarryHeavilyEncumbered = "heavily_encumbered"
 	CarryOverCapacity      = "over_capacity"
 )
+
+// AttunementView counts attuned items against the limit (ruleset max_attuned, changed by attunement.max).
+type AttunementView struct {
+	Attuned int `json:"attuned"`
+	Max     int `json:"max"` // -1 = unlimited
+}
 
 type CarryView struct {
 	Weight       float64 `json:"weight"`   // carried weight, coins included

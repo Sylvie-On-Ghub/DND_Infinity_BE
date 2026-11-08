@@ -11,7 +11,7 @@ func humanChar(sel ...Selection) Character {
 	return Character{
 		ID: "h", RaceID: "human",
 		Abilities:  map[Ability]AbilityScore{Dex: {Score: 12}},
-		Classes:    []ClassLevel{{ClassID: "rogue", Level: 1}},
+		Classes:    []ClassLevel{{ClassID: "fighter", Level: 1}},
 		Selections: sel,
 	}
 }

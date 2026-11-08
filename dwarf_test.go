@@ -11,7 +11,7 @@ func dwarfChar(level int) Character {
 	return Character{
 		ID: "d", RaceID: "dwarf",
 		Abilities: map[Ability]AbilityScore{Con: {Score: 14}},
-		Classes:   []ClassLevel{{ClassID: "rogue", Level: level}},
+		Classes:   []ClassLevel{{ClassID: "fighter", Level: level}},
 	}
 }
 

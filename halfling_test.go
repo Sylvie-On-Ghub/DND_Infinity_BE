@@ -13,7 +13,7 @@ func TestHalflingTraits(t *testing.T) {
 	c := Character{
 		ID: "h", RaceID: "halfling",
 		Abilities: map[Ability]AbilityScore{Dex: {Score: 16}},
-		Classes:   []ClassLevel{{ClassID: "rogue", Level: 1}},
+		Classes:   []ClassLevel{{ClassID: "fighter", Level: 1}},
 	}
 	sh := mustCompute(t, c, lib, Ruleset{})
 	noContentWarnings(t, sh)
