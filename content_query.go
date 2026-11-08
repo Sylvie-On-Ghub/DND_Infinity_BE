@@ -4,7 +4,7 @@ package character
 // anything that needs to enumerate the library (the Library interface only does lookups).
 
 // ContentKinds are the kinds the API exposes, in URL form.
-var ContentKinds = []string{"features", "items", "classes", "spells", "spell-lists", "skills", "backgrounds", "races"}
+var ContentKinds = []string{"features", "items", "classes", "spells", "spell-lists", "skills", "backgrounds", "races", "creatures"}
 
 type ContentSummary struct {
 	ID   string `json:"id"`
@@ -13,7 +13,7 @@ type ContentSummary struct {
 	Kind   ItemKind `json:"kind,omitempty"`
 	Weight float64  `json:"weight,omitempty"`
 	Cost   *Price   `json:"cost,omitempty"`
-	Tags   []string `json:"tags,omitempty"`
+	Tags   []string `json:"tags,omitempty"` // items and creatures
 }
 
 // AllFeatures returns every loaded feature, sorted by id. It is what lets choice options list feats.
@@ -26,7 +26,7 @@ func (l *ContentLibrary) AllFeatures() []Feature {
 }
 
 // List returns id and name for every entry of a kind, sorted by id (skills keep their file order).
-// Items also carry kind, weight, cost and tags.
+// Items also carry kind, weight, cost and tags; creatures carry tags.
 func (l *ContentLibrary) List(kind string) ([]ContentSummary, error) {
 	out := []ContentSummary{}
 	switch kind {
@@ -51,6 +51,11 @@ func (l *ContentLibrary) List(kind string) ([]ContentSummary, error) {
 		for _, id := range sortedKeys(l.lists) {
 			out = append(out, ContentSummary{ID: id, Name: l.lists[id].Name})
 		}
+	case "creatures":
+		for _, id := range sortedKeys(l.creatures) {
+			cr := l.creatures[id]
+			out = append(out, ContentSummary{ID: id, Name: cr.Name, Tags: cr.Tags})
+		}
 	case "backgrounds":
 		out = l.listTagged("background")
 	case "races":
@@ -60,7 +65,7 @@ func (l *ContentLibrary) List(kind string) ([]ContentSummary, error) {
 			out = append(out, ContentSummary{ID: s.ID, Name: s.Name})
 		}
 	default:
-		return nil, notFound("unknown content kind %q (use features, items, classes, spells, spell-lists, skills, backgrounds or races)", kind)
+		return nil, notFound("unknown content kind %q (use features, items, classes, spells, spell-lists, skills, backgrounds, races or creatures)", kind)
 	}
 	return out, nil
 }
@@ -86,6 +91,10 @@ func (l *ContentLibrary) Lookup(kind, id string) (any, error) {
 		}
 	case "spell-lists":
 		if v, ok := l.lists[id]; ok {
+			return v, nil
+		}
+	case "creatures":
+		if v, ok := l.creatures[id]; ok {
 			return v, nil
 		}
 	case "backgrounds", "races":

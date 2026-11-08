@@ -942,3 +942,90 @@ func serve(h http.Handler, req *http.Request) *httptest.ResponseRecorder {
 	h.ServeHTTP(rec, req)
 	return rec
 }
+
+// ---------------------------------------------------------------------------
+// Pets
+// ---------------------------------------------------------------------------
+
+func petsPack(t *testing.T) *ContentLibrary {
+	t.Helper()
+	lib := mustLoad(t, LoadOptions{}, memPack("p", map[string]string{
+		"creatures/owl.json": owlJSON,
+		"classes/mage.json": `{"id":"mage","name":"Mage","hit_die":6,"levels":[[]],
+			"spellcasting":{"ability":"int","divisor":1}}`,
+		"spells/ff.json": `{"id":"find_familiar","name":"Find Familiar","level":1,"pets":{"tags":["familiar"]}}`,
+	}))
+	if lib.HasErrors() {
+		dumpIssues(t, lib)
+		t.Fatal("the pets pack should load")
+	}
+	return lib
+}
+
+func TestAPIPetsFlow(t *testing.T) {
+	srv, store := newTestServer(t, func(cfg *Config) { cfg.Library = petsPack(t) })
+	c := Character{ID: "m1", Name: "Mage", Classes: []ClassLevel{{ClassID: "mage", Level: 1, RolledHP: []int{6}}},
+		Abilities:  map[Ability]AbilityScore{Int: {Score: 16}},
+		Spellbooks: map[string]SpellState{"class:mage": {Known: []string{"find_familiar"}}}}
+	saveFixture(t, store, c)
+
+	rec := call(t, srv, http.MethodPost, "/api/characters/m1/pets", `{"creature_id":"owl","source_id":"find_familiar","name":"Hoot"}`)
+	wantStatus(t, rec, http.StatusOK)
+	var added struct {
+		Sheet Sheet  `json:"sheet"`
+		PetID string `json:"pet_id"`
+	}
+	into(t, rec, &added)
+	if added.PetID == "" || len(added.Sheet.Pets) != 1 || added.Sheet.Pets[0].MaxHP != 1 || len(added.Sheet.Pets[0].Warnings) != 0 {
+		t.Fatalf("add: %+v", added)
+	}
+	pet := "/api/characters/m1/pets/" + added.PetID
+
+	rec = call(t, srv, http.MethodPatch, pet, `{"name":"Hooty"}`)
+	wantStatus(t, rec, http.StatusOK)
+	if got := getChar(t, srv, "m1").Pets[0].Name; got != "Hooty" {
+		t.Errorf("name = %q", got)
+	}
+
+	e := post(t, srv, pet+"/hp", `{"damage": 5}`)
+	if e.Sheet.Pets[0].Status != PetDead || e.Sheet.Pets[0].CurrentHP != 0 {
+		t.Errorf("after damage: %+v", e.Sheet.Pets[0])
+	}
+	e = post(t, srv, pet+"/conditions", `{"add":["prone"]}`)
+	if len(e.Sheet.Pets[0].Conditions) != 1 {
+		t.Errorf("conditions = %v", e.Sheet.Pets[0].Conditions)
+	}
+	wantStatus(t, call(t, srv, http.MethodPatch, pet, `{"status":"dismissed"}`), http.StatusOK)
+	post(t, srv, "/api/characters/m1/hp", `{"set": 1}`)
+	e = post(t, srv, "/api/characters/m1/rest", `{"type":"long"}`)
+	if p := e.Sheet.Pets[0]; p.CurrentHP != 1 || p.Status != PetDismissed {
+		t.Errorf("after a long rest: %+v", p)
+	}
+
+	wantError(t, call(t, srv, http.MethodPatch, "/api/characters/m1/pets/nope", `{}`), http.StatusNotFound, "not_found")
+	wantError(t, call(t, srv, http.MethodPost, "/api/characters/m1/pets", `{"creature_id":"owl","oops":1}`), http.StatusBadRequest, "bad_request")
+	wantError(t, call(t, srv, http.MethodPost, "/api/characters/m1/pets", `{"creature_id":"ghost","source_id":"find_familiar"}`), http.StatusBadRequest, "bad_request")
+	wantError(t, call(t, srv, http.MethodPut, pet, `{}`), http.StatusMethodNotAllowed, "method_not_allowed")
+	wantError(t, call(t, srv, http.MethodGet, "/api/characters/m1/pets", nil), http.StatusMethodNotAllowed, "method_not_allowed")
+	wantError(t, call(t, srv, http.MethodPost, pet+"/fly", `{}`), http.StatusNotFound, "not_found")
+
+	wantStatus(t, call(t, srv, http.MethodDelete, pet, nil), http.StatusOK)
+	if n := len(getChar(t, srv, "m1").Pets); n != 0 {
+		t.Errorf("pets after delete = %d", n)
+	}
+
+	rec = call(t, srv, http.MethodGet, "/api/content/creatures", nil)
+	wantStatus(t, rec, http.StatusOK)
+	var list []ContentSummary
+	into(t, rec, &list)
+	if len(list) != 1 || list[0].ID != "owl" || len(list[0].Tags) != 1 {
+		t.Errorf("creatures = %+v", list)
+	}
+	rec = call(t, srv, http.MethodGet, "/api/content/creatures/owl", nil)
+	wantStatus(t, rec, http.StatusOK)
+	var owl Creature
+	into(t, rec, &owl)
+	if owl.Name != "Owl" {
+		t.Errorf("owl = %+v", owl)
+	}
+}
