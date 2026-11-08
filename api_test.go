@@ -688,16 +688,16 @@ func TestAPIContent(t *testing.T) {
 		Warnings int            `json:"warnings"`
 	}
 	into(t, rec, &overview)
-	if overview.Counts["classes"] != 9 || overview.Counts["skills"] != 18 || overview.Errors != 0 {
-		t.Errorf("overview = %+v, want 9 classes, 18 skills and no errors", overview)
+	if overview.Counts["classes"] != 10 || overview.Counts["skills"] != 18 || overview.Errors != 0 {
+		t.Errorf("overview = %+v, want 10 classes, 18 skills and no errors", overview)
 	}
 
 	rec = call(t, srv, http.MethodGet, "/api/content/classes", nil)
 	wantStatus(t, rec, http.StatusOK)
 	var classes []ContentSummary
 	into(t, rec, &classes)
-	if len(classes) != 9 || classes[0].ID != "barbarian" || classes[1].ID != "bard" || classes[2].ID != "cleric" || classes[3].ID != "fighter" || classes[4].ID != "monk" || classes[5].ID != "rogue" || classes[6].ID != "sorcerer" || classes[7].ID != "warlock" || classes[8].ID != "wizard" {
-		t.Errorf("classes = %+v, want barbarian, bard, cleric, fighter, monk, rogue, sorcerer, warlock and wizard sorted by id", classes)
+	if len(classes) != 10 || classes[0].ID != "barbarian" || classes[1].ID != "bard" || classes[2].ID != "cleric" || classes[3].ID != "fighter" || classes[4].ID != "monk" || classes[5].ID != "ranger" || classes[6].ID != "rogue" || classes[7].ID != "sorcerer" || classes[8].ID != "warlock" || classes[9].ID != "wizard" {
+		t.Errorf("classes = %+v, want barbarian, bard, cleric, fighter, monk, ranger, rogue, sorcerer, warlock and wizard sorted by id", classes)
 	}
 
 	rec = call(t, srv, http.MethodGet, "/api/content/classes/rogue", nil)
@@ -740,8 +740,8 @@ func TestAPIReloadSwapsContent(t *testing.T) {
 	rec = call(t, srv, http.MethodGet, "/api/content/classes", nil)
 	var after []ContentSummary
 	into(t, rec, &after)
-	if len(after) != 9 {
-		t.Errorf("after reload: %+v, want 9 classes", after)
+	if len(after) != 10 {
+		t.Errorf("after reload: %+v, want 10 classes", after)
 	}
 }
 
@@ -759,7 +759,7 @@ func TestAPIFailedReloadKeepsOldContent(t *testing.T) {
 	rec = call(t, srv, http.MethodGet, "/api/content/classes", nil)
 	var classes []ContentSummary
 	into(t, rec, &classes)
-	if len(classes) != 9 {
+	if len(classes) != 10 {
 		t.Errorf("a failed reload must leave the old content in place, got %+v", classes)
 	}
 }

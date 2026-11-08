@@ -356,7 +356,7 @@ func TestLoaderChecksSubclassSpellcasting(t *testing.T) {
 func TestExamplePackLoadsClean(t *testing.T) {
 	lib := loadExample(t)
 	c := lib.Counts()
-	if c["skills"] != 18 || c["classes"] != 9 || c["spell_lists"] != 6 {
+	if c["skills"] != 18 || c["classes"] != 10 || c["spell_lists"] != 7 {
 		t.Errorf("counts = %v", c)
 	}
 	for _, is := range lib.Issues() {

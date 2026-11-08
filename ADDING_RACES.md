@@ -157,6 +157,8 @@ All of these go on the race feature or on a trait feature.
 | A bonus that depends on equipment | add `"requires"` to the modifier: `armour` (a shield alone doesn't count), `no_heavy_armour_or_shield`, `no_heavy_armour`, `no_armour_or_shield`, or, on attack and damage targets, `weapon`, `melee_weapon`, `one_handed_melee_alone` or `thrown_weapon` |
 | A speed equal to another speed | `{"target":"speed.swim","kind":"min","value_speed":"walk"}` |
 | A reminder with no maths | `{"target":"check.all","kind":"note","note":"Text shown on the sheet"}` |
+| Fewer Exhaustion levels after a Short Rest | `{"target":"rest.short.exhaustion","kind":"add","value":1}` (the Ranger's Tireless) |
+| A bonus for a pet (familiar, companion) | prefix any target with `pet.<creature tag>.`: `{"target":"pet.familiar.speed.fly","kind":"min","value":40}`. It applies to every pet whose creature has that tag, never to the character. A note's text can include `{owner.spell_save_dc}` or `{owner.spell_attack}`, filled in with the pet's source's numbers |
 | Carrying capacity doubled | grant the existing feature `powerful_build`, or `{"target":"carry_capacity","kind":"multiply","value":2}` |
 | Fixed skill proficiency | `"grants":{"skills":{"perception":"trained"}}` (levels: `half`, `trained`, `expert`) |
 | Fixed skills on a background | nothing extra: if the character already has one from elsewhere, the sheet adds a pending `skill_replacement` choice on the background to pick any other skill |
@@ -164,6 +166,7 @@ All of these go on the race feature or on a trait feature.
 | Tool, weapon or armour proficiency | `"grants":{"tools":{"smiths_tools":"trained"},"weapon_profs":["longsword","martial"],"armour_profs":["light"]}` (weapons match a category such as `simple` / `martial`, or a specific item id) |
 | Fixed languages | `"grants":{"languages":["common","elvish"]}` |
 | Sub-race or lineage | a choice on the race feature with `options`, each granting a trait: `{"id":"lineage","kind":"pick","count":1,"options":[{"id":"cinder","name":"Cinder","grants":{"feature_ids":["my_race_cinder"]}}]}` |
+| A term repeated N times ("five times your level") | `{"source":"class_level.ranger","mul":5}` in a formula's `terms`; `mul` is applied before `div` and `max` |
 | Natural armour | on a trait: `"ac_formulas":[{"id":"my_race_hide","name":"Natural Armour","no_armour":true,"formula":{"base":13,"terms":[{"source":"mod.dex"}]}}]`. The best eligible AC formula is used. |
 | Natural weapon (claws, bite) | an action with attack details: `"actions":[{"name":"Claws","type":"action","is_attack":true,"attack":{"damage_dice":"1d6","damage_type":"slashing","range_normal":5,"properties":["finesse"]}}]` |
 | Innate spell, at will | `"spells":{"spell_ids":["some_spell"],"ability":"cha"}`. `ability` is the casting ability for its save DC and attack bonus. |
