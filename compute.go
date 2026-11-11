@@ -781,10 +781,32 @@ func baseFeatureID(id string) string {
 
 // activeMods leaves out modifiers whose armour requirement isn't met. Weapon requirements are checked
 // attack by attack, and anything else isn't a requirement the engine knows, so it warns and doesn't apply.
+// An only_caster modifier whose class isn't the character's only spellcasting class is kept as a note,
+// with "with <Class> spells" put in front of its condition.
 func activeMods(g *gathered, mods []Modifier) []Modifier {
-	return slices.DeleteFunc(slices.Clone(mods), func(m Modifier) bool {
+	mods = slices.Clone(mods)
+	for i, m := range mods {
+		id, ok := strings.CutPrefix(m.Requires, RequiresOnlyCasterPrefix)
+		if !ok {
+			continue
+		}
+		mods[i].Requires = ""
+		if onlyCaster(g, id) {
+			continue
+		}
+		name := id
+		if j := slices.IndexFunc(g.casters, func(e casterEntry) bool { return e.classID == id }); j >= 0 && g.casters[j].name != "" {
+			name = g.casters[j].name
+		}
+		cond := "with " + name + " spells"
+		if m.Condition != "" {
+			cond += ", " + m.Condition
+		}
+		mods[i].Condition = cond
+	}
+	return slices.DeleteFunc(mods, func(m Modifier) bool {
 		switch m.Requires {
-		case "", RequiresOneWeapon, RequiresThrown, RequiresMeleeWeapon, RequiresWeapon:
+		case "", RequiresOneWeapon, RequiresThrown, RequiresMeleeWeapon, RequiresWeapon, RequiresStrengthAttack:
 			return false
 		case RequiresArmour:
 			return !g.armourWorn
@@ -799,6 +821,11 @@ func activeMods(g *gathered, mods []Modifier) []Modifier {
 			fmt.Sprintf("modifier on %q requires %q, which isn't recognised, so it has no effect", m.Target, m.Requires)))
 		return true
 	})
+}
+
+// onlyCaster reports whether class id is the character's only spellcasting class.
+func onlyCaster(g *gathered, id string) bool {
+	return len(g.casters) > 0 && !slices.ContainsFunc(g.casters, func(e casterEntry) bool { return e.classID != id })
 }
 
 // resolveSpeedValues turns modifiers valued by a speed into plain numbers, with speeds read without them.
@@ -984,7 +1011,7 @@ func newCalc(mods []Modifier) *calc {
 }
 
 func weaponRequirement(r string) bool {
-	return r == RequiresOneWeapon || r == RequiresThrown || r == RequiresMeleeWeapon || r == RequiresWeapon
+	return r == RequiresOneWeapon || r == RequiresThrown || r == RequiresMeleeWeapon || r == RequiresWeapon || r == RequiresStrengthAttack
 }
 
 // weaponRiders lists the weapon-only dice riders on these targets that an attack meeting qualifies gets.
@@ -1827,6 +1854,9 @@ func buildAttack(sp attackSpec, k *calc, modOf map[Ability]int, pb int) AttackVi
 	dmgTargets := []string{TargetDamageAll, dmgTarget}
 
 	ab := attackAbility(sp.d, sp.abilityOverride, modOf)
+	if ab == Str {
+		sp.qualifies = append(slices.Clone(sp.qualifies), RequiresStrengthAttack)
+	}
 
 	toHit := modOf[ab] + sp.magic + k.sum(atkTargets...) + k.weaponSum(sp.qualifies, atkTargets...)
 	if sp.proficient {

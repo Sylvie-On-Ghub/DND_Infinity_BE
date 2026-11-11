@@ -191,3 +191,55 @@ func TestFormsAdHocUnknown(t *testing.T) {
 		t.Errorf("ac note = %+v (found %v), want condition %q", n, ok, "while nope is active")
 	}
 }
+
+func TestStrengthAttackRequirement(t *testing.T) {
+	lib := weaponLib()
+	lib.items["str_sword"] = Item{ID: "str_sword", Name: "Str Sword", Kind: ItemWeapon, Weapon: &WeaponStats{
+		Category: "martial", Attack: AttackDetails{DamageDice: "1d8", DamageType: "slashing", RangeNormal: 5, Ability: Str},
+	}}
+	c := newChar(1, map[Ability]int{Str: 10, Dex: 10})
+	c.Modifiers = []Modifier{{Target: TargetDamageAll, Kind: ModAdd, Value: 2, Requires: RequiresStrengthAttack, SourceID: "rage"}}
+	equip(&c, "str_sword", "rapier")
+	c.Inventory[1].AbilityOverride = Dex
+	sh := mustCompute(t, c, lib, Ruleset{})
+
+	for name, want := range map[string]int{"Str Sword": 2, "Rapier": 0, "Unarmed Strike": 3} { // unarmed deals 1 flat
+		a, ok := findAttack(sh, name)
+		if !ok || a.DamageBonus != want {
+			t.Errorf("%s damage bonus = %d (found %v), want %d", name, a.DamageBonus, ok, want)
+		}
+	}
+}
+
+func TestOnlyCasterRequirement(t *testing.T) {
+	lib := fakeLib{classes: map[string]Class{
+		"sorcerer": {ID: "sorcerer", Name: "Sorcerer", Spellcasting: &SpellcastingDef{Ability: Cha, Divisor: 1, Prep: PrepKnown}},
+		"wizard":   {ID: "wizard", Name: "Wizard", Spellcasting: &SpellcastingDef{Ability: Int, Divisor: 1, Prep: PrepPrepared}},
+	}}
+	mod := Modifier{Target: TargetSpellSaveDC, Kind: ModAdd, Value: 1, Requires: RequiresOnlyCasterPrefix + "sorcerer", SourceID: "innate"}
+	dc := func(classes ...ClassLevel) (int, Sheet) {
+		c := Character{ID: "c", Name: "T", Classes: classes, Modifiers: []Modifier{mod},
+			Abilities: map[Ability]AbilityScore{Cha: {Score: 14}, Int: {Score: 14}}}
+		sh := mustCompute(t, c, lib, Ruleset{})
+		src, ok := findSource(sh, "class:sorcerer")
+		if !ok {
+			t.Fatalf("no sorcerer source in %+v", sh.Spellcasting)
+		}
+		return src.SaveDC, sh
+	}
+
+	if got, sh := dc(cls("sorcerer", 1)); got != 8+2+2+1 {
+		t.Errorf("single-class DC = %d, want 13", got)
+	} else if _, ok := findNote(sh, TargetSpellSaveDC); ok {
+		t.Error("a met requirement shouldn't leave a note")
+	}
+
+	got, sh := dc(cls("sorcerer", 1), cls("wizard", 1))
+	if got != 8+2+2 {
+		t.Errorf("multiclass DC = %d, want 12", got)
+	}
+	n, ok := findNote(sh, TargetSpellSaveDC)
+	if !ok || n.Condition != "with Sorcerer spells" {
+		t.Errorf("note = %+v (found %v), want condition %q", n, ok, "with Sorcerer spells")
+	}
+}
