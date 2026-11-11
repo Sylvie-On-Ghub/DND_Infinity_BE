@@ -901,6 +901,11 @@ func findChoice(lib Library, featureID, choiceID string) (Choice, error) {
 			return skillReplacementChoice("Choose a replacement skill", 1), nil
 		}
 		choices = f.Choices
+		if f.Form != nil && f.Form.Shape != nil {
+			if ch, ok := knownFormsChoice(*f.Form.Shape, 20); ok { // the most it can ever offer
+				choices = append(slices.Clone(choices), ch)
+			}
+		}
 	}
 	for _, ch := range choices {
 		if ch.ID == choiceID {
@@ -1085,6 +1090,17 @@ func ChoiceOptions(c Character, lib Library, rules Ruleset, featureID, choiceID 
 				if held[id] {
 					o.Eligible, o.Reason = false, "already chosen"
 				}
+				out = append(out, o)
+			}
+			sort.SliceStable(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+		case "creature":
+			info, def := shapeLimitsFor(sh, lib, featureID)
+			for _, cr := range lib.Creatures() {
+				if !slices.Contains(cr.Tags, f.Tag) {
+					continue
+				}
+				o := EligibleOption{OptionID: cr.ID, Name: cr.Name, Eligible: true}
+				o.Eligible, o.Reason = shapeEligible(info, cr, def.Name)
 				out = append(out, o)
 			}
 			sort.SliceStable(out, func(i, j int) bool { return out[i].Name < out[j].Name })

@@ -513,7 +513,13 @@ func (g *gathered) applyFeature(c Character, f Feature, level int) []string {
 	start := len(g.pending)
 	groupOf := map[string]string{}
 	satisfied := map[string]int{}
-	for _, ch := range f.Choices {
+	choices := f.Choices
+	if f.Form != nil && f.Form.Shape != nil { // a shape form's Known Forms choice is synthesised from its limits
+		if ch, ok := knownFormsChoice(*f.Form.Shape, g.classLevels[f.Form.Shape.ClassID]); ok {
+			choices = append(slices.Clone(choices), ch)
+		}
+	}
+	for _, ch := range choices {
 		before := len(g.pending)
 		sel, ok := findSelection(c.Selections, f.ID, ch.ID)
 		if !ok {
@@ -613,6 +619,12 @@ func (g *gathered) applyChoice(f Feature, ch Choice, sel Selection) []string {
 					continue // nothing to apply: the option's data doesn't exist
 				}
 				next = append(next, g.applyOption(f, opt, 1, f.ID+":"+ch.ID)...)
+
+			case ch.Filter != nil && ch.Filter.Type == "creature":
+				if cr, err := g.lib.Creature(id); err != nil || !slices.Contains(cr.Tags, ch.Filter.Tag) {
+					g.warnings = append(g.warnings, mkWarning(WarnNotInPool, f.ID, ch.ID, "", id,
+						fmt.Sprintf("%q is not a creature with the %q tag, so it isn't an option for %q", id, ch.Filter.Tag, ch.Prompt)))
+				}
 
 			case ch.Filter != nil:
 				// Permissive: out-of-pool picks are warned about but still applied.

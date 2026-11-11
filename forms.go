@@ -161,6 +161,9 @@ func formViews(c Character, g *gathered, resources []ResourceView) []FormView {
 				v.Choices = append(v.Choices, ce.fc.Choice)
 			}
 		}
+		if e.def.Shape != nil {
+			g.shapeFormView(c, &v, e)
+		}
 		out = append(out, v)
 	}
 	return out
