@@ -156,6 +156,8 @@ type gathered struct {
 	casters     []casterEntry
 	resources   []resourceEntry
 	spellGrants []spellGrantEntry
+	forms       []formEntry
+	formChoices []formChoiceEntry
 
 	lib Library // for checking picks from spell pools
 }
@@ -503,6 +505,7 @@ func (g *gathered) applyFeature(c Character, f Feature, level int) []string {
 		}
 	}
 	g.addActions(f.ID, g.resOf[f.ID], acts)
+	g.addForms(f)
 
 	// Choices. Choices sharing a Group are alternatives: if any one is complete, the unfinished
 	// others stop showing as pending; filling in more than one warns.
@@ -778,8 +781,8 @@ func baseFeatureID(id string) string {
 
 // activeMods leaves out modifiers whose armour requirement isn't met. Weapon requirements are checked
 // attack by attack, and anything else isn't a requirement the engine knows, so it warns and doesn't apply.
-func activeMods(g *gathered) []Modifier {
-	return slices.DeleteFunc(slices.Clone(g.mods), func(m Modifier) bool {
+func activeMods(g *gathered, mods []Modifier) []Modifier {
+	return slices.DeleteFunc(slices.Clone(mods), func(m Modifier) bool {
 		switch m.Requires {
 		case "", RequiresOneWeapon, RequiresThrown, RequiresMeleeWeapon, RequiresWeapon:
 			return false
@@ -1101,7 +1104,7 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 		totalLevel += cl.Level
 	}
 	g := gather(c, lib, totalLevel)
-	mods := dedupe(resolveAbilityValues(c, activeMods(g)))
+	mods := dedupe(resolveAbilityValues(c, activeMods(g, resolveForms(c, g, g.mods))))
 	// Modifiers aimed at pets are set aside: they never touch the owner, and pets read them later.
 	var petMods []Modifier
 	mods = slices.DeleteFunc(mods, func(m Modifier) bool {
@@ -1419,6 +1422,7 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 		PactSlots:        pactSlots,
 		ArmourProfs:      g.armour,
 		WeaponProfs:      g.weapons,
+		Forms:            formViews(c, g, resources),
 
 		ShortRestExhaustion: k.sum(TargetShortRestExhaustion),
 	}
