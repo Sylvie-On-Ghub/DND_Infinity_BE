@@ -309,3 +309,71 @@ func TestFormsDuplicateActiveEntries(t *testing.T) {
 		t.Errorf("forms = %+v, want the first entry's picks", sh.Forms)
 	}
 }
+
+func TestValueFormula(t *testing.T) {
+	lib := fakeLib{
+		classes: map[string]Class{"druid": {ID: "druid", Name: "Druid", HitDie: 8, Levels: [][]string{{}, {}, {}, {}, {}}}},
+		features: map[string]Feature{
+			"f": {ID: "f", Name: "F", Modifiers: []Modifier{{
+				Target: "initiative", Kind: ModAdd,
+				ValueFormula: &Formula{Base: 1, Terms: []Term{{Source: "class_level.druid", Div: 2}}},
+			}}},
+		},
+	}
+	c := Character{ID: "c", Name: "Test", FeatureIDs: []string{"f"},
+		Abilities: map[Ability]AbilityScore{Dex: {Score: 12}},
+		Classes:   []ClassLevel{cls("druid", 5)}}
+	sh := mustCompute(t, c, lib, Ruleset{})
+	if sh.Initiative != 4 { // Dex +1, plus 1 + 5/2
+		t.Errorf("Initiative = %d, want 4", sh.Initiative)
+	}
+	if len(sh.Warnings) != 0 {
+		t.Errorf("Warnings = %+v, want none", sh.Warnings)
+	}
+}
+
+func TestValueFormulaUnknownTerm(t *testing.T) {
+	lib := fakeLib{features: map[string]Feature{
+		"f": {ID: "f", Name: "F", Modifiers: []Modifier{{
+			Target: "initiative", Kind: ModAdd, ValueFormula: &Formula{Base: 2, Terms: []Term{{Source: "bogus"}}},
+		}}},
+	}}
+	sh := mustCompute(t, formsChar("f"), lib, Ruleset{})
+	if sh.Initiative != 2 {
+		t.Errorf("Initiative = %d, want 2", sh.Initiative)
+	}
+	found := false
+	for _, w := range sh.Warnings {
+		found = found || w.Code == WarnUnknownTerm
+	}
+	if !found {
+		t.Errorf("Warnings = %+v, want an unknown-term warning", sh.Warnings)
+	}
+}
+
+func TestFormACFormula(t *testing.T) {
+	lib := fakeLib{features: map[string]Feature{
+		"f": {ID: "f", Name: "F", Form: &FormDef{ID: "guard", Name: "Guard", NoCost: true},
+			ACFormulas: []ACFormula{{ID: "guard_ac", Name: "Guard", Formula: Formula{Base: 18}, Form: "guard"}}},
+	}}
+	off := mustCompute(t, formsChar("f"), lib, Ruleset{})
+	if off.AC != 10 {
+		t.Errorf("AC off = %d, want 10", off.AC)
+	}
+	var opt *ACOption
+	for i := range off.ACDetail.Options {
+		if off.ACDetail.Options[i].ID == "guard_ac" {
+			opt = &off.ACDetail.Options[i]
+		}
+	}
+	if opt == nil || opt.Eligible || opt.Reason != "only while Guard is active" {
+		t.Errorf("guard_ac option = %+v, want ineligible with form reason", opt)
+	}
+
+	c := formsChar("f")
+	c.ActiveForms = []ActiveForm{{ID: "guard"}}
+	on := mustCompute(t, c, lib, Ruleset{})
+	if on.AC != 18 || on.ACDetail.FormulaID != "guard_ac" {
+		t.Errorf("AC on = %d via %q, want 18 via guard_ac", on.AC, on.ACDetail.FormulaID)
+	}
+}

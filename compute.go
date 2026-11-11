@@ -130,18 +130,19 @@ func withSource(m Modifier, defaultSource string) Modifier {
 // ---------------------------------------------------------------------------
 
 type gathered struct {
-	mods      []Modifier
-	features  []Feature // every feature that resolved, for prerequisite checks
-	skills    map[string]ProficiencyLevel
-	tools     map[string]ProficiencyLevel
-	languages []string
-	armour    []string
-	weapons   []string
-	actions   []Action
-	views     []FeatureView     // every feature that resolved, for Sheet.Features
-	resOf     map[string]string // feature id -> its resource's id in Sheet.Resources
-	pending   []PendingChoice
-	warnings  []Warning
+	mods        []Modifier
+	activeForms map[string]bool // form ids switched on, set by resolveForms
+	features    []Feature       // every feature that resolved, for prerequisite checks
+	skills      map[string]ProficiencyLevel
+	tools       map[string]ProficiencyLevel
+	languages   []string
+	armour      []string
+	weapons     []string
+	actions     []Action
+	views       []FeatureView     // every feature that resolved, for Sheet.Features
+	resOf       map[string]string // feature id -> its resource's id in Sheet.Resources
+	pending     []PendingChoice
+	warnings    []Warning
 
 	acFormulas []ACFormula // from features and worn armour
 	armourWorn bool
@@ -872,6 +873,48 @@ func resolveAbilityValues(c Character, mods []Modifier) []Modifier {
 	return out
 }
 
+// resolveFormulaValues turns modifiers valued by a formula into plain numbers. Terms read the
+// character's ability modifiers with formula-valued modifiers left out, which rules out loops.
+func resolveFormulaValues(c Character, g *gathered, mods []Modifier) []Modifier {
+	plain := make([]Modifier, 0, len(mods))
+	for _, m := range mods {
+		if m.ValueFormula == nil {
+			plain = append(plain, m)
+		}
+	}
+	if len(plain) == len(mods) {
+		return mods
+	}
+	k := newCalc(plain)
+	modOf := map[Ability]int{}
+	for _, a := range allAbilities {
+		score := 10 // missing ability defaults to 10 rather than 0
+		if st, ok := c.Abilities[a]; ok {
+			score = st.Score
+		}
+		modOf[a] = floorMod(k.apply(AbilityTarget(a), score))
+	}
+	level := 0
+	for _, cl := range c.Classes {
+		level += cl.Level
+	}
+	level = max(level, 1)
+	ctx := formulaCtx{modOf: modOf, pb: 2 + (level-1)/4, level: level, classLevels: g.classLevels}
+	out := make([]Modifier, len(mods))
+	for i, m := range mods {
+		if m.ValueFormula != nil {
+			v, bad := evalFormula(*m.ValueFormula, ctx)
+			for _, src := range bad {
+				g.warnings = append(g.warnings, mkWarning(WarnUnknownTerm, m.SourceID, "", m.Target, src,
+					fmt.Sprintf("value formula on %q has an unknown term %q (counted as 0)", m.Target, src)))
+			}
+			m.Value = max(m.Value, v)
+		}
+		out[i] = m
+	}
+	return out
+}
+
 // dedupe implements "same named source doesn't stack". Modifiers sharing
 // (Target, Kind, SourceID, Condition, Note) collapse to one, keeping the highest Value.
 // Empty SourceID or AllowStack opts out. (Open question: for penalties, "best" arguably means
@@ -1132,7 +1175,7 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 		totalLevel += cl.Level
 	}
 	g := gather(c, lib, totalLevel)
-	mods := dedupe(resolveAbilityValues(c, activeMods(g, resolveForms(c, g, g.mods))))
+	mods := dedupe(resolveFormulaValues(c, g, resolveAbilityValues(c, activeMods(g, resolveForms(c, g, g.mods)))))
 	// Modifiers aimed at pets are set aside: they never touch the owner, and pets read them later.
 	var petMods []Modifier
 	mods = slices.DeleteFunc(mods, func(m Modifier) bool {
@@ -1701,6 +1744,12 @@ func computeAC(c Character, g *gathered, lib Library, rules Ruleset, k *calc, mo
 		}
 		s := scored{f: f, value: v, eligible: true}
 		switch {
+		case f.Form != "" && !g.activeForms[f.Form]:
+			name := f.Form
+			if e, ok := g.form(f.Form); ok {
+				name = e.def.Name
+			}
+			s.eligible, s.reason = false, "only while "+name+" is active"
 		case f.NoArmour && g.armourWorn:
 			s.eligible, s.reason = false, "requires no armour"
 		case f.NoShield && g.shieldWorn:

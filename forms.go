@@ -75,6 +75,8 @@ func resolveForms(c Character, g *gathered, mods []Modifier) []Modifier {
 		}
 	}
 
+	g.activeForms = active
+
 	out := slices.Clone(mods)
 	for i, m := range out {
 		if m.Form == "" {
