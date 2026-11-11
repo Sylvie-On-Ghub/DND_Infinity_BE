@@ -1206,8 +1206,25 @@ func ApplyForm(c *Character, sh Sheet, a FormAction) error {
 		return badReq("unknown form %q", start.ID)
 	}
 	view := sh.Forms[idx]
-	if slices.ContainsFunc(c.ActiveForms, func(f ActiveForm) bool { return f.ID == start.ID }) {
+	// A shape form carries its limits on the view; starting one that is already active changes the beast.
+	shape := view.MaxCR != ""
+	active := slices.IndexFunc(c.ActiveForms, func(f ActiveForm) bool { return f.ID == start.ID })
+	if active >= 0 && !shape {
 		return badReq("form %q is already active", start.ID)
+	}
+	if shape {
+		if start.CreatureID == "" {
+			return badReq("form %q needs a creature_id", start.ID)
+		}
+		n := slices.IndexFunc(view.KnownForms, func(o ShapeOption) bool { return o.ID == start.CreatureID })
+		if n < 0 {
+			return badReq("%q is not one of your Known Forms for %s", start.CreatureID, view.Name)
+		}
+		if o := view.KnownForms[n]; !o.Eligible {
+			return badReq("%s: %s", o.Name, o.Reason)
+		}
+	} else if start.CreatureID != "" {
+		return badReq("form %q is not a shape, so it takes no creature_id", start.ID)
 	}
 
 	for id := range start.Picks {
@@ -1239,6 +1256,14 @@ func ApplyForm(c *Character, sh Sheet, a FormAction) error {
 			return err
 		}
 	}
-	c.ActiveForms = append(c.ActiveForms, ActiveForm{ID: start.ID, Picks: start.Picks})
+	af := ActiveForm{ID: start.ID, Picks: start.Picks, CreatureID: start.CreatureID}
+	if active >= 0 {
+		c.ActiveForms[active] = af
+	} else {
+		c.ActiveForms = append(c.ActiveForms, af)
+	}
+	if shape {
+		c.TempHP = max(c.TempHP, view.TempHP)
+	}
 	return nil
 }

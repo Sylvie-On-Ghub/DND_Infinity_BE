@@ -32,6 +32,10 @@
       },
       "ACFormula": {
         "properties": {
+          "form": {
+            "description": "The form this AC formula belongs to. It is offered only while that form is active (Circle Forms during Wild Shape).",
+            "type": "string"
+          },
           "formula": {
             "$ref": "#/components/schemas/Formula"
           },
@@ -188,6 +192,10 @@
       },
       "ActiveForm": {
         "properties": {
+          "creature_id": {
+            "description": "Shape forms only: the creature the character has become. Set by starting the form with a creature_id.",
+            "type": "string"
+          },
           "id": {
             "type": "string"
           },
@@ -1299,12 +1307,19 @@
           },
           "no_cost": {
             "type": "boolean"
+          },
+          "shape": {
+            "$ref": "#/components/schemas/ShapeDef"
           }
         },
         "type": "object"
       },
       "FormStart": {
         "properties": {
+          "creature_id": {
+            "description": "Shape forms (Wild Shape): the Known Form to become, from the form's known_forms. Required for a shape form and refused on any other. A creature that isn't known, or isn't eligible now, is a 400. Starting a shape form that is already active changes the beast: it spends a use unless free is set, and temp HP is re-applied.",
+            "type": "string"
+          },
           "free": {
             "type": "boolean"
           },
@@ -1337,7 +1352,22 @@
           "feature_id": {
             "type": "string"
           },
+          "fly_allowed": {
+            "description": "Shape forms only: whether creatures with a fly speed are allowed now.",
+            "type": "boolean"
+          },
           "id": {
+            "type": "string"
+          },
+          "known_forms": {
+            "description": "Shape forms only: the character's Known Forms in the order they were picked, each with whether it can be taken now and, if not, why.",
+            "items": {
+              "$ref": "#/components/schemas/ShapeOption"
+            },
+            "type": "array"
+          },
+          "max_cr": {
+            "description": "Shape forms only: the highest creature CR the form allows now, as a CR string (\"1/2\"). Set only on shape forms.",
             "type": "string"
           },
           "name": {
@@ -1354,6 +1384,10 @@
           },
           "resource_id": {
             "type": "string"
+          },
+          "temp_hp": {
+            "description": "Shape forms only: the temp HP starting the form grants, after any shape.temp_hp modifier. Starting it sets temp HP to the higher of the current value and this.",
+            "type": "integer"
           },
           "uses_left": {
             "type": "integer"
@@ -1814,6 +1848,14 @@
               "cha"
             ],
             "type": "string"
+          },
+          "value_formula": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Formula"
+              }
+            ],
+            "description": "Works the value out from a formula (\"three times your Druid level\") instead of a fixed number. Overrides value."
           },
           "value_speed": {
             "description": "Uses this speed as the value, for example a swimming speed equal to your walking speed. Pair it with kind min.",
@@ -2414,6 +2456,92 @@
         },
         "type": "object"
       },
+      "ShapeDef": {
+        "properties": {
+          "class_id": {
+            "type": "string"
+          },
+          "creature_tag": {
+            "type": "string"
+          },
+          "limits": {
+            "items": {
+              "$ref": "#/components/schemas/ShapeLimit"
+            },
+            "type": "array"
+          },
+          "temp_hp": {
+            "$ref": "#/components/schemas/Formula"
+          }
+        },
+        "type": "object"
+      },
+      "ShapeLimit": {
+        "properties": {
+          "fly": {
+            "type": "boolean"
+          },
+          "known": {
+            "type": "integer"
+          },
+          "max_cr": {
+            "type": "string"
+          },
+          "min_level": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ShapeOption": {
+        "properties": {
+          "cr": {
+            "type": "string"
+          },
+          "eligible": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ShapeView": {
+        "properties": {
+          "can_cast": {
+            "type": "boolean"
+          },
+          "cr": {
+            "type": "string"
+          },
+          "creature_id": {
+            "type": "string"
+          },
+          "form_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "size": {
+            "type": "string"
+          },
+          "traits": {
+            "items": {
+              "$ref": "#/components/schemas/Trait"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
       "Sheet": {
         "description": "Everything the rules engine computes for a character. Never stored; recomputed on every request.",
         "properties": {
@@ -2573,6 +2701,14 @@
               "$ref": "#/components/schemas/Sense"
             },
             "type": "array"
+          },
+          "shape": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ShapeView"
+              }
+            ],
+            "description": "Present while a shape form (Wild Shape) is active: the creature the character has become. The sheet's AC, speeds, abilities and attacks are that creature's, with the character's own proficiency bonus, saves and skills where they are higher."
           },
           "short_rest_exhaustion": {
             "type": "integer"

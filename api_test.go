@@ -1065,3 +1065,52 @@ func TestAPIForms(t *testing.T) {
 		t.Errorf("a free start should work with no uses left")
 	}
 }
+
+// shapePack writes the Wild Shape fixture out as a content pack.
+func shapePack(t *testing.T) PackSource {
+	t.Helper()
+	fl := shapeLib()
+	files := map[string]string{}
+	add := func(path string, v any) {
+		b, err := json.Marshal(v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files[path] = string(b)
+	}
+	for id, f := range fl.features {
+		add("features/"+id+".json", f)
+	}
+	for id, cl := range fl.classes {
+		add("classes/"+id+".json", cl)
+	}
+	for id, cr := range fl.creatures {
+		add("creatures/"+id+".json", cr)
+	}
+	add("skills.json", fl.Skills())
+	return memPack("p", files)
+}
+
+func TestAPIWildShape(t *testing.T) {
+	lib := mustLoad(t, LoadOptions{}, shapePack(t))
+	if lib.HasErrors() {
+		dumpIssues(t, lib)
+		t.Fatal("the Wild Shape pack should load")
+	}
+	srv, store := newTestServer(t, func(cfg *Config) { cfg.Library = lib })
+	c := druidChar(4, "wolf", "shell", "bear")
+	c.ID = "d1"
+	saveFixture(t, store, c)
+	path := "/api/characters/d1/forms"
+
+	wantError(t, call(t, srv, http.MethodPost, path, `{"start":{"id":"wild_shape","creature_id":"bear"}}`), http.StatusBadRequest, "bad_request")
+	wantError(t, call(t, srv, http.MethodPost, path, `{"start":{"id":"wild_shape"}}`), http.StatusBadRequest, "bad_request")
+	e := post(t, srv, path, `{"start":{"id":"wild_shape","creature_id":"wolf"}}`)
+	if e.Sheet.Shape == nil || e.Sheet.Shape.CreatureID != "wolf" {
+		t.Fatalf("shape after start: %+v", e.Sheet.Shape)
+	}
+	e = post(t, srv, path, `{"start":{"id":"wild_shape","creature_id":"shell"}}`)
+	if e.Sheet.Shape == nil || e.Sheet.Shape.CreatureID != "shell" {
+		t.Errorf("shape after change: %+v", e.Sheet.Shape)
+	}
+}

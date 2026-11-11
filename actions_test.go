@@ -975,3 +975,125 @@ func TestApplyRestClearsForms(t *testing.T) {
 		t.Errorf("long rest: err = %v, forms = %+v", err, c.ActiveForms)
 	}
 }
+
+func shapeStart(creature string, free bool) FormAction {
+	return FormAction{Start: &FormStart{ID: "wild_shape", CreatureID: creature, Free: free}}
+}
+
+func TestApplyFormShape(t *testing.T) {
+	lib := shapeLib()
+	known := []string{"wolf", "shell", "bear"}
+	sheetFor := func(c Character) Sheet { return mustCompute(t, c, lib, Ruleset{}) }
+	moonChar := func() Character {
+		c := druidChar(4, known...)
+		c.FeatureIDs = append(c.FeatureIDs, "moon")
+		return c
+	}
+
+	t.Run("start", func(t *testing.T) {
+		c := druidChar(4, known...)
+		if err := ApplyForm(&c, sheetFor(c), shapeStart("wolf", false)); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(c.ActiveForms, []ActiveForm{{ID: "wild_shape", CreatureID: "wolf"}}) ||
+			c.ResourceUsed["wild"] != 1 || c.TempHP != 4 {
+			t.Errorf("forms = %+v, used = %v, temp = %d", c.ActiveForms, c.ResourceUsed, c.TempHP)
+		}
+	})
+	t.Run("keeps higher temp HP", func(t *testing.T) {
+		c := druidChar(4, known...)
+		c.TempHP = 10
+		if err := ApplyForm(&c, sheetFor(c), shapeStart("wolf", false)); err != nil {
+			t.Fatal(err)
+		}
+		if c.TempHP != 10 {
+			t.Errorf("temp HP = %d, want 10", c.TempHP)
+		}
+	})
+	t.Run("moon temp HP", func(t *testing.T) {
+		c := moonChar()
+		if err := ApplyForm(&c, sheetFor(c), shapeStart("wolf", false)); err != nil {
+			t.Fatal(err)
+		}
+		if c.TempHP != 12 {
+			t.Errorf("temp HP = %d, want 12", c.TempHP)
+		}
+	})
+	t.Run("change beast", func(t *testing.T) {
+		c := druidChar(4, known...)
+		c.ActiveForms = []ActiveForm{{ID: "wild_shape", CreatureID: "wolf"}}
+		c.ResourceUsed = map[string]int{"wild": 1}
+		c.TempHP = 1
+		if err := ApplyForm(&c, sheetFor(c), shapeStart("shell", false)); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(c.ActiveForms, []ActiveForm{{ID: "wild_shape", CreatureID: "shell"}}) ||
+			c.ResourceUsed["wild"] != 2 || c.TempHP != 4 {
+			t.Errorf("forms = %+v, used = %v, temp = %d", c.ActiveForms, c.ResourceUsed, c.TempHP)
+		}
+	})
+	t.Run("change beast free", func(t *testing.T) {
+		c := druidChar(4, known...)
+		c.ActiveForms = []ActiveForm{{ID: "wild_shape", CreatureID: "wolf"}}
+		c.ResourceUsed = map[string]int{"wild": 1}
+		if err := ApplyForm(&c, sheetFor(c), shapeStart("shell", true)); err != nil {
+			t.Fatal(err)
+		}
+		if len(c.ActiveForms) != 1 || c.ActiveForms[0].CreatureID != "shell" || c.ResourceUsed["wild"] != 1 {
+			t.Errorf("forms = %+v, used = %v", c.ActiveForms, c.ResourceUsed)
+		}
+	})
+
+	t.Run("bad requests", func(t *testing.T) {
+		for name, tc := range map[string]struct {
+			c      Character
+			sh     Sheet
+			action FormAction
+		}{
+			"no creature":    {druidChar(4, known...), Sheet{}, shapeStart("", false)},
+			"not known":      {druidChar(4, known...), Sheet{}, shapeStart("croc", false)},
+			"ineligible":     {druidChar(4, known...), Sheet{}, shapeStart("bear", false)},
+			"no known forms": {druidChar(4), Sheet{}, shapeStart("wolf", false)},
+			"non-shape form": {Character{}, formSheet(1), FormAction{Start: &FormStart{ID: "rage", CreatureID: "wolf",
+				Picks: map[string][]string{"animal": {"bear"}}}}},
+		} {
+			t.Run(name, func(t *testing.T) {
+				sh := tc.sh
+				if sh.Forms == nil {
+					sh = sheetFor(tc.c)
+				}
+				before, _ := json.Marshal(tc.c)
+				if err := ApplyForm(&tc.c, sh, tc.action); !isBadRequest(err) {
+					t.Errorf("err = %v, want bad_request", err)
+				}
+				if after, _ := json.Marshal(tc.c); string(after) != string(before) {
+					t.Errorf("character changed: %s", after)
+				}
+			})
+		}
+	})
+	t.Run("no uses", func(t *testing.T) {
+		c := druidChar(4, known...)
+		c.ResourceUsed = map[string]int{"wild": 2}
+		wantCode(t, ApplyForm(&c, sheetFor(c), shapeStart("wolf", false)), "no_uses")
+	})
+}
+
+func TestShortRestKeepsShape(t *testing.T) {
+	c := druidChar(4, "wolf")
+	c.ActiveForms = []ActiveForm{{ID: "wild_shape", CreatureID: "wolf"}}
+	c.ResourceUsed = map[string]int{"wild": 2}
+	sh := mustCompute(t, c, shapeLib(), Ruleset{})
+	if err := ApplyRest(&c, sh, "short"); err != nil {
+		t.Fatal(err)
+	}
+	if c.ResourceUsed["wild"] != 1 || len(c.ActiveForms) != 1 {
+		t.Errorf("after a short rest: used = %v, forms = %+v", c.ResourceUsed, c.ActiveForms)
+	}
+	if err := ApplyRest(&c, sh, "long"); err != nil {
+		t.Fatal(err)
+	}
+	if c.ResourceUsed["wild"] != 0 || len(c.ActiveForms) != 0 {
+		t.Errorf("after a long rest: used = %v, forms = %+v", c.ResourceUsed, c.ActiveForms)
+	}
+}

@@ -193,7 +193,9 @@ func TestOpenAPISchemasFollowTheTypes(t *testing.T) {
 	if _, ok := fc["Choice"]; ok {
 		t.Error("FormChoice should flatten its embedded Choice")
 	}
-	for _, f := range []string{"Sheet.forms", "Character.active_forms", "Modifier.form", "Feature.form", "Feature.form_choices"} {
+	for _, f := range []string{"Sheet.forms", "Character.active_forms", "Modifier.form", "Feature.form", "Feature.form_choices",
+		"FormStart.creature_id", "ActiveForm.creature_id", "Sheet.shape", "FormView.max_cr", "FormView.fly_allowed",
+		"FormView.temp_hp", "FormView.known_forms", "Creature.cr", "Modifier.value_formula", "ACFormula.form"} {
 		if fieldDocs[f] == "" {
 			t.Errorf("fieldDocs has no description for %s", f)
 		}
