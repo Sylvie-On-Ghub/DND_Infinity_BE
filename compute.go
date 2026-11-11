@@ -1212,6 +1212,10 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 	warnings := append([]Warning{}, g.warnings...)
 	warnings = append(warnings, invRes.warnings...)
 
+	// An active shape form (Wild Shape) substitutes the creature's stat block into the numbers below.
+	shape, shapeWarns := g.resolveActiveShape(c, lib)
+	warnings = append(warnings, shapeWarns...)
+
 	// Unknown modifier targets (typos in homebrew data), once per distinct target.
 	seenTarget := map[string]bool{}
 	for _, m := range mods {
@@ -1254,9 +1258,11 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 
 	jack := k.flag(ModSet, TargetJackOfAllTrades)
 
-	// Abilities, saves.
+	// Abilities, saves. While shaped, Str, Dex and Con are the beast's scores exactly; ownMod keeps the
+	// character's own modifiers for HP, resources and spellcasting.
 	abilities := map[Ability]AbilityView{}
 	modOf := map[Ability]int{}
+	ownMod := map[Ability]int{}
 	scoreOf := map[Ability]int{}
 	for _, a := range allAbilities {
 		score, saveProf := 10, false // missing ability defaults to 10 rather than 0
@@ -1267,13 +1273,18 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 			saveProf = true // from class or a feature; the stored flag stays as a manual extra
 		}
 		score = k.apply(AbilityTarget(a), score)
+		ownMod[a], scoreOf[a] = floorMod(score), score
+		if shape.replaces(a) {
+			score = shape.score(a)
+		}
 		mod := floorMod(score)
-		save := mod + k.sum(SaveTarget(a), TargetSaveAll)
+		save := mod
 		if saveProf {
 			save += pb
 		}
+		save = shape.saveBase(a, save) + k.sum(SaveTarget(a), TargetSaveAll)
 		abilities[a] = AbilityView{Score: score, Mod: mod, SaveBonus: save, SaveProf: saveProf}
-		modOf[a], scoreOf[a] = mod, score
+		modOf[a] = mod
 	}
 
 	// Skills and passives.
@@ -1289,7 +1300,8 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 			lvl = ProfHalf
 		}
 		targets := []string{SkillTarget(sd.ID), CheckTarget(ab), TargetCheckAll}
-		bonus := modOf[ab] + profPart(lvl, pb) + k.sum(targets...)
+		bonus, lvl := shape.skillBase(sd, modOf[ab]+profPart(lvl, pb), lvl)
+		bonus += k.sum(targets...)
 
 		adv := k.flag(ModAdvantage, targets...)
 		dis := k.flag(ModDisadvantage, targets...)
@@ -1324,8 +1336,8 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 	}
 
 	// HP, AC, initiative.
-	maxHP := k.apply(TargetMaxHP, rolled+level*modOf[Con])
-	acDetail, acWarnings := computeAC(c, g, lib, rules, k, modOf, pb, level)
+	maxHP := k.apply(TargetMaxHP, rolled+level*ownMod[Con])
+	acDetail, acWarnings := computeAC(c, g, lib, rules, k, modOf, pb, level, shape)
 	warnings = append(warnings, acWarnings...)
 	ac := acDetail.Total
 	init := k.apply(TargetInitiative, modOf[Dex])
@@ -1334,9 +1346,14 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 	}
 
 	// Speeds: all from modifiers, so the race/feature must grant its base (e.g. speed.walk Add 30).
+	// While shaped they are the beast's exactly: the species base is itself a modifier.
 	speeds := map[SpeedType]int{}
 	for _, t := range allSpeeds {
-		if v := k.apply(SpeedTarget(t), 0); v > 0 {
+		v := k.apply(SpeedTarget(t), 0)
+		if shape != nil {
+			v = shape.creature.Speeds[t]
+		}
+		if v > 0 {
 			speeds[t] = v
 		}
 	}
@@ -1351,6 +1368,13 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 			senses = append(senses, Sense{Name: strings.TrimPrefix(t, "sense."), Range: v})
 		}
 	}
+	resistances, immunities, actions := k.damageList("resist."), k.damageList("immune."), g.actions
+	if shape != nil {
+		senses = shape.senses(senses)
+		resistances = mergeDamageTypes(resistances, shape.creature.Resistances)
+		immunities = mergeDamageTypes(immunities, shape.creature.Immunities)
+		actions = append(slices.Clone(actions), shape.creature.Actions...)
+	}
 
 	// Notes: nothing is silently dropped. Notes, conditional modifiers, and every advantage or
 	// disadvantage appear here (skills also show the net flag on their own row).
@@ -1364,14 +1388,14 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 		}
 	}
 
-	attacks := computeAttacks(g, rules, k, modOf, pb)
+	attacks := computeAttacks(g, rules, k, modOf, pb, shape)
 	casterLevel := computeCasterLevel(g)
 
 	resources := []ResourceView{}
 	for _, re := range g.resources {
 		used := c.ResourceUsed[re.featureID]
-		if re.res.MaxAbility != "" && modOf[re.res.MaxAbility]+re.res.MaxBonus > re.res.Max {
-			re.res.Max = modOf[re.res.MaxAbility] + re.res.MaxBonus
+		if re.res.MaxAbility != "" && ownMod[re.res.MaxAbility]+re.res.MaxBonus > re.res.Max {
+			re.res.Max = ownMod[re.res.MaxAbility] + re.res.MaxBonus
 		}
 		remaining := re.res.Max - used
 		if remaining < 0 {
@@ -1385,7 +1409,7 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 		})
 	}
 
-	spellSources, spellSlots, pactSlots, spellWarns := computeSpells(c, g, lib, rules, k, modOf, pb, totalLevel)
+	spellSources, spellSlots, pactSlots, spellWarns := computeSpells(c, g, lib, rules, k, ownMod, pb, totalLevel)
 	warnings = append(warnings, spellWarns...)
 
 	// Prerequisites (permissive: warn only).
@@ -1484,11 +1508,11 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 		Tools:            tools,
 		Speeds:           speeds,
 		Senses:           senses,
-		Resistances:      k.damageList("resist."),
-		Immunities:       k.damageList("immune."),
+		Resistances:      resistances,
+		Immunities:       immunities,
 		Vulnerabilities:  k.damageList("vuln."),
 		Features:         features,
-		Actions:          g.actions,
+		Actions:          actions,
 		Notes:            notes,
 		PendingChoices:   pending,
 		Warnings:         finalWarnings,
@@ -1506,6 +1530,7 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 		ArmourProfs:      g.armour,
 		WeaponProfs:      g.weapons,
 		Forms:            formViews(c, g, resources),
+		Shape:            shape.view(k),
 
 		ShortRestExhaustion: k.sum(TargetShortRestExhaustion),
 	}
@@ -1711,7 +1736,10 @@ func spellACFormulas(c Character, g *gathered, lib Library) []ACFormula {
 // if nothing is eligible, the baseline with a warning. Spell formulas (Mage Armor) are only
 // available while the spell is castable, and only used through the override: the sheet can't
 // know whether the spell is currently active.
-func computeAC(c Character, g *gathered, lib Library, rules Ruleset, k *calc, modOf map[Ability]int, pb, level int) (ACBreakdown, []Warning) {
+//
+// While shaped, the candidates are the beast's AC and formulas tied to an active form; armour and shields
+// don't count.
+func computeAC(c Character, g *gathered, lib Library, rules Ruleset, k *calc, modOf map[Ability]int, pb, level int, shape *activeShape) (ACBreakdown, []Warning) {
 	var warns []Warning
 
 	base := defaultBaseAC
@@ -1723,21 +1751,25 @@ func computeAC(c Character, g *gathered, lib Library, rules Ruleset, k *calc, mo
 	// so results are deterministic.
 	candidates := []ACFormula{base}
 	seen := map[string]bool{base.ID: true}
-	for _, f := range g.acFormulas {
-		if seen[f.ID] {
-			continue
-		}
-		seen[f.ID] = true
-		candidates = append(candidates, f)
-	}
 	fromSpell := map[string]bool{}
-	for _, f := range spellACFormulas(c, g, lib) {
-		if seen[f.ID] {
-			continue
+	if shape != nil {
+		candidates = shape.acCandidates(g)
+	} else {
+		for _, f := range g.acFormulas {
+			if seen[f.ID] {
+				continue
+			}
+			seen[f.ID] = true
+			candidates = append(candidates, f)
 		}
-		seen[f.ID] = true
-		fromSpell[f.ID] = true
-		candidates = append(candidates, f)
+		for _, f := range spellACFormulas(c, g, lib) {
+			if seen[f.ID] {
+				continue
+			}
+			seen[f.ID] = true
+			fromSpell[f.ID] = true
+			candidates = append(candidates, f)
+		}
 	}
 	sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].ID < candidates[j].ID })
 
@@ -1762,9 +1794,9 @@ func computeAC(c Character, g *gathered, lib Library, rules Ruleset, k *calc, mo
 				name = e.def.Name
 			}
 			s.eligible, s.reason = false, "only while "+name+" is active"
-		case f.NoArmour && g.armourWorn:
+		case f.NoArmour && g.armourWorn && shape == nil:
 			s.eligible, s.reason = false, "requires no armour"
-		case f.NoShield && g.shieldWorn:
+		case f.NoShield && g.shieldWorn && shape == nil:
 			s.eligible, s.reason = false, "requires no shield"
 		}
 		all = append(all, s)
@@ -1950,8 +1982,16 @@ func buildAttack(sp attackSpec, k *calc, modOf map[Ability]int, pb int) AttackVi
 }
 
 // computeAttacks builds attack entries for equipped weapons, then feature-granted attack actions,
-// then unarmed strike (always available).
-func computeAttacks(g *gathered, rules Ruleset, k *calc, modOf map[Ability]int, pb int) []AttackView {
+// then unarmed strike (always available). While shaped, the beast's attacks replace weapons and
+// unarmed strike.
+func computeAttacks(g *gathered, rules Ruleset, k *calc, modOf map[Ability]int, pb int, shape *activeShape) []AttackView {
+	if shape != nil {
+		out := featureAttacks(g, k, modOf, pb)
+		for _, a := range shape.creature.Attacks {
+			out = append(out, beastAttack(a, shape, k))
+		}
+		return out
+	}
 	out := []AttackView{}
 
 	weaponsHeld := 0
@@ -2001,12 +2041,7 @@ func computeAttacks(g *gathered, rules Ruleset, k *calc, modOf map[Ability]int, 
 		}
 	}
 
-	for _, a := range g.actions {
-		if a.IsAttack && a.Attack != nil {
-			// Feature-granted attacks (natural weapons, class features) are treated as proficient.
-			out = append(out, buildAttack(attackSpec{name: a.Name, d: *a.Attack, proficient: true}, k, modOf, pb))
-		}
-	}
+	out = append(out, featureAttacks(g, k, modOf, pb)...)
 
 	unarmed := defaultUnarmed
 	if rules.Unarmed != nil {
@@ -2017,6 +2052,18 @@ func computeAttacks(g *gathered, rules Ruleset, k *calc, modOf map[Ability]int, 
 		magic: unarmed.MagicBonus, proficient: true,
 	}, k, modOf, pb))
 
+	return out
+}
+
+// featureAttacks builds the attack actions features grant (natural weapons, class features). They are
+// treated as proficient.
+func featureAttacks(g *gathered, k *calc, modOf map[Ability]int, pb int) []AttackView {
+	out := []AttackView{}
+	for _, a := range g.actions {
+		if a.IsAttack && a.Attack != nil {
+			out = append(out, buildAttack(attackSpec{name: a.Name, d: *a.Attack, proficient: true}, k, modOf, pb))
+		}
+	}
 	return out
 }
 

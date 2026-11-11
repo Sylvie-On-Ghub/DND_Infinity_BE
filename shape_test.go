@@ -1,10 +1,11 @@
 package character
 
-// shape_test.go - tests for Wild Shape's Known Forms and the shape info on FormView. shapeLib and
-// druidChar are the fixture shared by the other shape tests.
+// shape_test.go - tests for Wild Shape: Known Forms, the shape info on FormView and the shaped sheet.
+// shapeLib and druidChar are the fixture shared by the other shape tests.
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -185,5 +186,145 @@ func TestKnownFormsPool(t *testing.T) {
 	}
 	if want := []string{"bear", "croc", "hawk", "shell", "wolf"}; !slices.Equal(ids, want) {
 		t.Errorf("options = %v, want %v", ids, want)
+	}
+}
+
+// shaped computes a druid shaped as creatureID, with these features and ad hoc modifiers.
+func shaped(t *testing.T, c Character, creatureID string, featureIDs []string, mods ...Modifier) Sheet {
+	t.Helper()
+	c.ActiveForms = []ActiveForm{{ID: "wild_shape", CreatureID: creatureID}}
+	c.FeatureIDs = append(c.FeatureIDs, featureIDs...)
+	c.Modifiers = append(c.Modifiers, mods...)
+	return mustCompute(t, c, shapeLib(), Ruleset{})
+}
+
+func TestShapeOverlay(t *testing.T) {
+	c := druidChar(4, "wolf", "bear", "hawk", "shell")
+	dmg := Modifier{Target: TargetDamageAll, Kind: ModAdd, Value: 1, SourceID: "adhoc"}
+	unshaped := mustCompute(t, c, shapeLib(), Ruleset{})
+	sh := shaped(t, c, "wolf", nil, dmg)
+
+	ab := sh.Abilities
+	if ab[Str].Score != 14 || ab[Dex].Score != 15 || ab[Con].Score != 12 || ab[Wis].Score != 16 {
+		t.Errorf("scores Str %d Dex %d Con %d Wis %d, want 14 15 12 16", ab[Str].Score, ab[Dex].Score, ab[Con].Score, ab[Wis].Score)
+	}
+	if ab[Wis].SaveBonus != 5 || ab[Dex].SaveBonus != 2 {
+		t.Errorf("saves Wis %d Dex %d, want 5 2", ab[Wis].SaveBonus, ab[Dex].SaveBonus)
+	}
+	for id, want := range map[string]int{"stealth": 6, "perception": 5, "athletics": 2} {
+		if got := sh.Skills[id].Bonus; got != want {
+			t.Errorf("skill %s = %d, want %d", id, got, want)
+		}
+	}
+	if sh.Initiative != 2 || sh.AC != 12 || sh.ACDetail.FormulaID != "shape" || sh.ACDetail.Formula != "Wolf natural armour" {
+		t.Errorf("init %d AC %d (%q %q), want 2 12 (shape, Wolf natural armour)", sh.Initiative, sh.AC, sh.ACDetail.FormulaID, sh.ACDetail.Formula)
+	}
+	if sh.MaxHP != unshaped.MaxHP {
+		t.Errorf("MaxHP = %d, want %d (unchanged)", sh.MaxHP, unshaped.MaxHP)
+	}
+	if len(sh.Speeds) != 1 || sh.Speeds[SpeedWalk] != 40 {
+		t.Errorf("Speeds = %v, want walk 40 only", sh.Speeds)
+	}
+	if !slices.Contains(sh.Senses, Sense{Name: "darkvision", Range: 60}) {
+		t.Errorf("Senses = %v, want darkvision 60", sh.Senses)
+	}
+	if _, ok := findAttack(sh, "Unarmed Strike"); ok {
+		t.Errorf("Unarmed Strike should be replaced while shaped: %+v", sh.Attacks)
+	}
+	bite, ok := findAttack(sh, "Bite")
+	if !ok || bite.ToHit != 4 || bite.DamageDice != "1d6" || bite.DamageBonus != 3 || bite.DamageType != "piercing" || bite.Ability != Str {
+		t.Errorf("Bite = %+v (found %v), want +4, 1d6+3 piercing, str", bite, ok)
+	}
+	want := ShapeView{FormID: "wild_shape", CreatureID: "wolf", Name: "Wolf", Size: "Medium", CR: "1/4", Traits: []Trait{{Name: "Pack Tactics"}}}
+	if s := sh.Shape; s == nil || s.FormID != want.FormID || s.CreatureID != want.CreatureID || s.Name != want.Name ||
+		s.Size != want.Size || s.CR != want.CR || !slices.Equal(s.Traits, want.Traits) || s.CanCast {
+		t.Errorf("Shape = %+v, want %+v", s, want)
+	}
+}
+
+func TestShapeBlockSaveWins(t *testing.T) {
+	sh := shaped(t, druidChar(8, "bear"), "bear", nil)
+	if got := sh.Abilities[Con].SaveBonus; got != 5 {
+		t.Errorf("Con save = %d, want 5 (bear's 3 + 2 beats own 3)", got)
+	}
+}
+
+func TestShapeOff(t *testing.T) {
+	sh := mustCompute(t, druidChar(4, "wolf", "bear", "hawk", "shell"), shapeLib(), Ruleset{})
+	if sh.Abilities[Str].Score != 10 || sh.Shape != nil {
+		t.Errorf("Str %d Shape %+v, want 10 and nil", sh.Abilities[Str].Score, sh.Shape)
+	}
+	if _, ok := findAttack(sh, "Unarmed Strike"); !ok {
+		t.Errorf("want Unarmed Strike unshaped, got %+v", sh.Attacks)
+	}
+}
+
+func TestShapeCircleForms(t *testing.T) {
+	moon := []string{"moon"}
+	sh := shaped(t, druidChar(4, "wolf", "shell"), "wolf", moon)
+	if sh.AC != 16 || sh.ACDetail.FormulaID != "circle_forms" {
+		t.Errorf("wolf AC %d (%s), want 16 circle_forms", sh.AC, sh.ACDetail.FormulaID)
+	}
+	if got := sh.Abilities[Con].SaveBonus; got != 4 {
+		t.Errorf("wolf Con save = %d, want 4 (1 + Wis 3)", got)
+	}
+	sh = shaped(t, druidChar(4, "wolf", "shell"), "shell", moon)
+	if sh.AC != 17 || sh.ACDetail.FormulaID != "shape" {
+		t.Errorf("shell AC %d (%s), want 17 shape", sh.AC, sh.ACDetail.FormulaID)
+	}
+}
+
+func TestShapeStrengthAttack(t *testing.T) {
+	m := Modifier{Target: TargetDamageMelee, Kind: ModAdd, Value: 2, Requires: RequiresStrengthAttack, SourceID: "rage"}
+	sh := shaped(t, druidChar(4, "wolf"), "wolf", nil, m)
+	if bite, _ := findAttack(sh, "Bite"); bite.DamageBonus != 4 {
+		t.Errorf("Bite damage bonus = %d, want 4 (Str 2 + 2)", bite.DamageBonus)
+	}
+}
+
+func TestShapeArmourIgnored(t *testing.T) {
+	lib := shapeLib()
+	lib.items = map[string]Item{"plate": {ID: "plate", Name: "Plate", Kind: ItemArmour,
+		ACFormula: &ACFormula{ID: "plate", Name: "Plate", Formula: Formula{Base: 18}}}}
+	c := druidChar(4, "wolf")
+	c.Inventory = []InventoryItem{{ItemID: "plate", Quantity: 1, Equipped: true}}
+	c.ActiveForms = []ActiveForm{{ID: "wild_shape", CreatureID: "wolf"}}
+	sh := mustCompute(t, c, lib, Ruleset{})
+	if sh.AC != 12 || sh.ACDetail.FormulaID != "shape" {
+		t.Errorf("AC %d (%s), want 12 shape: armour doesn't count while shaped", sh.AC, sh.ACDetail.FormulaID)
+	}
+}
+
+func TestShapeWarnings(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		c        Character
+		creature string
+		code     WarningCode
+		str      int
+	}{
+		{"unknown creature", druidChar(4, "wolf"), "ghost", WarnShapeUnknownCreature, 10},
+		{"no creature", druidChar(4, "wolf"), "", WarnShapeUnknownCreature, 10},
+		{"not known", druidChar(4, "shell"), "wolf", WarnShapeNotKnown, 14},
+		{"ineligible", druidChar(4, "bear"), "bear", WarnShapeIneligible, 19},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sh := shaped(t, tc.c, tc.creature, nil)
+			var codes []WarningCode
+			for _, w := range sh.Warnings {
+				if strings.HasPrefix(string(w.Code), "shape_") {
+					codes = append(codes, w.Code)
+				}
+			}
+			if !slices.Equal(codes, []WarningCode{tc.code}) {
+				t.Errorf("shape warnings = %v, want [%s]", codes, tc.code)
+			}
+			if got := sh.Abilities[Str].Score; got != tc.str {
+				t.Errorf("Str = %d, want %d", got, tc.str)
+			}
+			if (sh.Shape != nil) != (tc.code != WarnShapeUnknownCreature) {
+				t.Errorf("Shape = %+v, want overlay only when the creature is found", sh.Shape)
+			}
+		})
 	}
 }
