@@ -4,6 +4,7 @@ package character
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -261,6 +262,152 @@ func TestDruidAllLevels(t *testing.T) {
 	}
 	for level := 1; level <= 20; level++ {
 		sh := mustCompute(t, druidAt(level), lib, Ruleset{})
+		for id, at := range gained {
+			if _, ok := findFeature(sh, id); ok != (level >= at) {
+				t.Errorf("level %d: has %s = %v, gained at %d", level, id, ok, at)
+			}
+		}
+	}
+}
+
+func moonAt(level int) Character {
+	c := druidAt(level)
+	c.Classes[0].SubclassID = "moon"
+	return c
+}
+
+// moonWolf computes a Moon druid already shaped into a wolf.
+func moonWolf(t *testing.T, lib *ContentLibrary, level int) (Character, Sheet) {
+	t.Helper()
+	c := moonAt(level)
+	c.Selections = []Selection{{FeatureID: "druid_wild_shape", ChoiceID: KnownFormsChoice, Picked: []string{"rat", "riding_horse", "spider", "wolf"}}}
+	sh := mustCompute(t, c, lib, Ruleset{})
+	if err := ApplyForm(&c, sh, FormAction{Start: &FormStart{ID: "wild_shape", CreatureID: "wolf"}}); err != nil {
+		t.Fatal(err)
+	}
+	sh = mustCompute(t, c, lib, Ruleset{})
+	noContentWarnings(t, sh)
+	return c, sh
+}
+
+func TestMoonCircleForms(t *testing.T) {
+	lib := loadDruidLib(t)
+	c, sh := moonWolf(t, lib, 3)
+	if sh.AC != 16 || sh.ACDetail.FormulaID != "moon_circle_forms" {
+		t.Errorf("AC = %d via %q, want 16 via moon_circle_forms", sh.AC, sh.ACDetail.FormulaID)
+	}
+	form := shapeForm(t, sh)
+	if form.MaxCR != "1" || form.TempHP != 9 {
+		t.Errorf("MaxCR %q TempHP %d, want 1 and 9", form.MaxCR, form.TempHP)
+	}
+	if c.TempHP != 9 {
+		t.Errorf("temp HP = %d, want 9", c.TempHP)
+	}
+	_, sh = moonWolf(t, lib, 9)
+	if form := shapeForm(t, sh); form.MaxCR != "3" || form.TempHP != 27 {
+		t.Errorf("level 9: MaxCR %q TempHP %d, want 3 and 27", form.MaxCR, form.TempHP)
+	}
+}
+
+func TestMoonImprovedCircleForms(t *testing.T) {
+	lib := loadDruidLib(t)
+	// Wolf Con 12 is +1; Wis 16 adds 3 from level 6.
+	_, sh := moonWolf(t, lib, 6)
+	if got := sh.Abilities[Con].SaveBonus; got != 4 {
+		t.Errorf("level 6 Con save = %d, want 4", got)
+	}
+	_, sh = moonWolf(t, lib, 5)
+	if got := sh.Abilities[Con].SaveBonus; got != 1 {
+		t.Errorf("level 5 Con save = %d, want 1", got)
+	}
+}
+
+func TestMoonSpells(t *testing.T) {
+	lib := loadElfLib(t) // Starry Wisp lives in the core-races pack
+	has := func(level int, id string) bool {
+		src := druidSource(t, mustCompute(t, moonAt(level), lib, Ruleset{}))
+		for _, s := range append(slices.Clone(src.Cantrips), src.Spells...) { // Starry Wisp is a cantrip
+			if s.ID == id && s.Granted {
+				return true
+			}
+		}
+		return false
+	}
+	for id, at := range map[string]int{
+		"cure_wounds_2024": 3, "moonbeam": 3, "starry_wisp": 3, "conjure_animals": 5, "fount_of_moonlight": 7, "mass_cure_wounds": 9,
+	} {
+		if has(at-1, id) || !has(at, id) || !has(20, id) {
+			t.Errorf("%s should be always prepared from level %d", id, at)
+		}
+	}
+	// They don't count against the number prepared.
+	base := mustCompute(t, druidAt(3), lib, Ruleset{})
+	sh := mustCompute(t, moonAt(3), lib, Ruleset{})
+	want, _ := findPending(base, "spells:class:druid", "prepared")
+	if p, ok := findPending(sh, "spells:class:druid", "prepared"); !ok || p.Remaining != want.Remaining {
+		t.Errorf("prepared pending = %+v, want %d remaining", p, want.Remaining)
+	}
+	// They can be cast while shaped.
+	_, sh = moonWolf(t, lib, 3)
+	found := false
+	for _, n := range sh.Notes {
+		if strings.Contains(n.Note, "Wild Shape") && strings.Contains(n.Note, "Moon") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("no Moon spells in Wild Shape note: %+v", sh.Notes)
+	}
+}
+
+func TestMoonlightStep(t *testing.T) {
+	lib := loadDruidLib(t)
+	r, ok := findResource(mustCompute(t, moonAt(10), lib, Ruleset{}), "moon_moonlight_step")
+	if !ok || r.Max != 3 || r.Recharge != "long_rest" {
+		t.Errorf("Moonlight Step = %+v (found %v), want 3 uses on a long rest", r, ok)
+	}
+	low := moonAt(10)
+	low.Abilities[Wis] = AbilityScore{Score: 8}
+	if r, ok := findResource(mustCompute(t, low, lib, Ruleset{}), "moon_moonlight_step"); !ok || r.Max != 1 {
+		t.Errorf("Wis 8 Moonlight Step = %+v, want 1", r)
+	}
+	if _, ok := findResource(mustCompute(t, moonAt(9), lib, Ruleset{}), "moon_moonlight_step"); ok {
+		t.Error("Moonlight Step should start at level 10")
+	}
+}
+
+func TestMoonLunarForm(t *testing.T) {
+	lib := loadDruidLib(t)
+	_, sh := moonWolf(t, lib, 14)
+	bite := attackNamed(t, sh, "Bite")
+	found := false
+	for _, r := range bite.DamageRiders {
+		if r.Dice == "2d10" && strings.Contains(r.Condition, "Radiant") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Bite riders = %+v, want 2d10 Radiant", bite.DamageRiders)
+	}
+	sh = mustCompute(t, moonAt(14), lib, Ruleset{})
+	noContentWarnings(t, sh)
+	found = false
+	for _, n := range sh.Notes {
+		if strings.Contains(n.Condition, "Wild Shape is active") && strings.Contains(n.Note, "2d10") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("unshaped: want a while-Wild-Shape note for 2d10: %+v", sh.Notes)
+	}
+}
+
+func TestMoonAllLevels(t *testing.T) {
+	lib := loadDruidLib(t)
+	gained := map[string]int{"moon_circle_forms": 3, "moon_circle_spells": 3, "moon_improved_circle_forms": 6, "moon_moonlight_step": 10, "moon_lunar_form": 14}
+	for level := 3; level <= 20; level++ {
+		sh := mustCompute(t, moonAt(level), lib, Ruleset{})
+		noContentWarnings(t, sh)
 		for id, at := range gained {
 			if _, ok := findFeature(sh, id); ok != (level >= at) {
 				t.Errorf("level %d: has %s = %v, gained at %d", level, id, ok, at)
