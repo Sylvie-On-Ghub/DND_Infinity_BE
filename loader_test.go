@@ -235,6 +235,74 @@ func TestValidationChoiceProblems(t *testing.T) {
 	}
 }
 
+func TestValidationForms(t *testing.T) {
+	lib := mustLoad(t, LoadOptions{}, memPack("p", map[string]string{
+		"features/a.json": `{"id":"a","name":"A","origin":"feat","form":{"id":"rage","name":"Rage"},
+			"modifiers":[{"target":"ac","kind":"add","value":1,"form":"nope"}],
+			"form_choices":[
+				{"form":"rage","id":"c","prompt":"p","kind":"allocate","points":2,"options":[{"id":"x","name":"X"}]},
+				{"form":"nope","id":"d","prompt":"p","kind":"pick","count":1,"options":[{"id":"x","name":"X"}]}]}`,
+		"features/b.json": `{"id":"b","name":"B","origin":"feat","form":{"id":"rage","name":"Rage Again"}}`,
+		"features/c.json": `{"id":"c","name":"C","origin":"feat","form":{"id":"","name":""}}`,
+	}))
+	for _, want := range []string{`form "rage"`, `unknown form "nope"`, "form choice", "form needs an id and a name"} {
+		if !hasIssue(lib, SevError, want) {
+			t.Errorf("expected an error containing %q, got %v", want, lib.Issues())
+		}
+	}
+}
+
+func TestValidationFormChoiceShape(t *testing.T) {
+	lib := mustLoad(t, LoadOptions{}, memPack("p", map[string]string{
+		"features/a.json": `{"id":"a","name":"A","origin":"feat","form":{"id":"rage","name":"Rage"},
+			"form_choices":[
+				{"form":"rage","id":"f","prompt":"p","kind":"pick","count":1,"filter":{"type":"skill"}},
+				{"form":"rage","id":"m","prompt":"p","kind":"pick","count":1,
+				 "options":[{"id":"x","name":"X","modifiers":[{"target":"skil.stealth","kind":"add","value":1}]}]}]}`,
+	}))
+	for _, want := range []string{"need explicit options", "unknown target"} {
+		if !hasIssue(lib, SevError, want) {
+			t.Errorf("expected an error containing %q, got %v", want, lib.Issues())
+		}
+	}
+}
+
+func TestValidationFormOK(t *testing.T) {
+	lib := mustLoad(t, LoadOptions{}, memPack("p", map[string]string{
+		"features/a.json": `{"id":"a","name":"A","origin":"feat","form":{"id":"rage","name":"Rage"},
+			"modifiers":[{"target":"resist.fire","kind":"add","value":1,"form":"rage"}]}`,
+		"features/b.json": `{"id":"b","name":"B","origin":"feat",
+			"form_choices":[{"form":"rage","id":"animal","prompt":"p","kind":"pick","count":1,
+			 "options":[{"id":"bear","name":"Bear","modifiers":[{"target":"resist.cold","kind":"add","value":1}]}]}]}`,
+	}))
+	if len(lib.Issues()) != 0 {
+		t.Errorf("expected no issues, got %v", lib.Issues())
+	}
+}
+
+func TestValidationNewRequires(t *testing.T) {
+	lib := mustLoad(t, LoadOptions{}, memPack("p", map[string]string{
+		"classes/sorcerer.json": `{"id":"sorcerer","name":"Sorcerer","hit_die":6,"levels":[]}`,
+		"features/ok.json": `{"id":"ok","name":"Ok","origin":"feat","modifiers":[
+			{"target":"damage.all","kind":"add","value":2,"requires":"strength_attack"},
+			{"target":"ac","kind":"add","value":1,"requires":"only_caster:sorcerer"}]}`,
+		"features/bad.json": `{"id":"bad","name":"Bad","origin":"feat","modifiers":[
+			{"target":"ac","kind":"add","value":1,"requires":"strength_attack"},
+			{"target":"ac","kind":"add","value":1,"requires":"only_caster:"},
+			{"target":"ac","kind":"add","value":1,"requires":"only_caster:nope"}]}`,
+	}))
+	for _, want := range []string{"only works on attack or damage targets", "needs a class id", `unknown class "nope"`} {
+		if !hasIssue(lib, SevError, want) {
+			t.Errorf("expected an error containing %q, got %v", want, lib.Issues())
+		}
+	}
+	for _, is := range lib.Issues() {
+		if is.Kind == "feature" && is.ID == "ok" {
+			t.Errorf("feature ok should load cleanly, got %v", is)
+		}
+	}
+}
+
 func TestValidationSkillReferences(t *testing.T) {
 	feature := `{"id":"f","name":"F","origin":"feat",
 		"grants":{"skills":{"stealth":"trained"}},

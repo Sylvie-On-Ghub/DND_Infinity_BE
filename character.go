@@ -143,7 +143,12 @@ const (
 	RequiresThrown           = "thrown_weapon"             // an attack made by throwing a weapon
 	RequiresMeleeWeapon      = "melee_weapon"              // an attack made with a melee weapon, so not an unarmed strike
 	RequiresWeapon           = "weapon"                    // an attack made with any weapon, melee, ranged or thrown
+	RequiresStrengthAttack   = "strength_attack"           // an attack made with Strength, so a Strength weapon or an unarmed strike (Rage)
 )
+
+// RequiresOnlyCasterPrefix starts "only_caster:<class id>": the modifier applies only when that class is the
+// character's sole spellcasting class.
+const RequiresOnlyCasterPrefix = "only_caster:"
 
 type Modifier struct {
 	Target string  `json:"target"`
@@ -155,6 +160,9 @@ type Modifier struct {
 	ValueSpeed SpeedType `json:"value_speed,omitempty"`
 	// Requires limits the modifier to certain equipment: one of the Requires constants.
 	Requires string `json:"requires,omitempty"`
+	// Form ties the modifier to a form (Rage, Bladesong): it applies while that form is active and shows as a
+	// "while <form> is active" reminder otherwise.
+	Form string `json:"form,omitempty"`
 	// Dice makes this a "dice rider" (Sneak Attack 3d6, Hunter's Mark 1d6, Bless 1d4). Only meaningful with
 	// Kind ModAdd. Riders are never summed into flat numbers; on attack/damage targets they are listed on the
 	// matching attack entries, elsewhere they surface in Sheet.Notes.
@@ -236,6 +244,22 @@ type Feature struct {
 	Repeatable    bool           `json:"repeatable,omitempty"`    // can be taken more than once (Ability Score Improvement as a feat); each pick is its own instance with its own choices
 	Spells        *SpellGrant    `json:"spells,omitempty"`        // spells this feature lets the character cast (innate casting)
 	Pets          *PetGrant      `json:"pets,omitempty"`          // creatures this feature lets the character keep as pets
+	Form          *FormDef       `json:"form,omitempty"`          // a temporary state this feature lets the character switch on (Rage, Bladesong)
+	FormChoices   []FormChoice   `json:"form_choices,omitempty"`  // picks offered when a form is switched on, declared by the feature that adds them
+}
+
+// FormDef declares a form: a state switched on and off over the API, with modifiers tagged to it.
+// Switching it on spends a use of the feature's resource unless NoCost is set.
+type FormDef struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	NoCost bool   `json:"no_cost,omitempty"`
+}
+
+// FormChoice is a pick offered when the named form is switched on. Only pick choices with explicit options.
+type FormChoice struct {
+	Form string `json:"form"`
+	Choice
 }
 
 // Grants are non-numeric things a feature (or a picked option) gives the character.
@@ -320,9 +344,13 @@ const (
 	WarnOverCount          WarningCode = "over_count"
 	WarnPrereqUnmet        WarningCode = "prereq_unmet"
 	WarnPrereqUnverifiable WarningCode = "prereq_unverifiable"
-	WarnUnknownID          WarningCode = "unknown_id"     // feature/option no longer in the library
-	WarnUnknownTarget      WarningCode = "unknown_target" // modifier target not in the valid set
-	WarnOverCap            WarningCode = "over_cap"       // e.g. inspiration above Ruleset.MaxInspiration
+	WarnUnknownID          WarningCode = "unknown_id"        // feature/option no longer in the library
+	WarnUnknownTarget      WarningCode = "unknown_target"    // modifier target not in the valid set
+	WarnOverCap            WarningCode = "over_cap"          // e.g. inspiration above Ruleset.MaxInspiration
+	WarnFormUnavailable    WarningCode = "form_unavailable"  // an active form whose feature the character no longer has
+	WarnFormPickMissing    WarningCode = "form_pick_missing" // an active form with a required pick not made
+	WarnFormPickInvalid    WarningCode = "form_pick_invalid" // a stored form pick that doesn't match an offered option
+	WarnFormUnknown        WarningCode = "form_unknown"      // an active form no longer in the library
 )
 
 type Warning struct {
@@ -452,6 +480,12 @@ type Details struct {
 	Appearance        string `json:"appearance,omitempty"`
 }
 
+// ActiveForm is a form that is switched on, with the picks made when it was started (choice id to option ids).
+type ActiveForm struct {
+	ID    string              `json:"id"`
+	Picks map[string][]string `json:"picks,omitempty"`
+}
+
 type Character struct {
 	ID           string  `json:"id"`
 	Version      int     `json:"version,omitempty"` // set by the store; PUT and PATCH must send the version they read
@@ -466,13 +500,14 @@ type Character struct {
 	Abilities map[Ability]AbilityScore `json:"abilities"`
 
 	// Play state
-	CurrentHP   int         `json:"current_hp"`
-	TempHP      int         `json:"temp_hp"` // top level, as planned
-	HitDiceUsed int         `json:"hit_dice_used"`
-	DeathSaves  [2]int      `json:"death_saves"` // successes, failures
-	Inspiration int         `json:"inspiration"` // validated against Ruleset.MaxInspiration
-	Conditions  []Condition `json:"conditions"`
-	Exhaustion  int         `json:"exhaustion"`
+	CurrentHP   int          `json:"current_hp"`
+	TempHP      int          `json:"temp_hp"` // top level, as planned
+	ActiveForms []ActiveForm `json:"active_forms,omitempty"`
+	HitDiceUsed int          `json:"hit_dice_used"`
+	DeathSaves  [2]int       `json:"death_saves"` // successes, failures
+	Inspiration int          `json:"inspiration"` // validated against Ruleset.MaxInspiration
+	Conditions  []Condition  `json:"conditions"`
+	Exhaustion  int          `json:"exhaustion"`
 
 	// Proficiencies (stored as levels; bonuses are computed)
 	Skills       map[string]ProficiencyLevel `json:"skills"`                  // keyed by SkillDef.ID
@@ -566,10 +601,23 @@ type Sheet struct {
 	WeaponProfs      []string                `json:"weapon_profs"`
 	Pets             []PetView               `json:"pets"`
 	PetSources       []PetSourceView         `json:"pet_sources"` // what the character can summon or keep as a pet
+	Forms            []FormView              `json:"forms,omitempty"`
 	// ShortRestExhaustion is how many Exhaustion levels a Short Rest removes (from rest.short.exhaustion).
 	ShortRestExhaustion int `json:"short_rest_exhaustion,omitempty"`
 
 	petMods []Modifier // owner modifiers aimed at pets; read when computing pets, not part of the API
+}
+
+// FormView is a form the character can switch on, and whether it is on.
+type FormView struct {
+	ID         string              `json:"id"`
+	Name       string              `json:"name"`
+	FeatureID  string              `json:"feature_id"` // instance id of the declaring feature
+	Active     bool                `json:"active"`
+	ResourceID string              `json:"resource_id,omitempty"` // empty for NoCost forms
+	UsesLeft   int                 `json:"uses_left,omitempty"`
+	Picks      map[string][]string `json:"picks,omitempty"`   // current picks when active
+	Choices    []Choice            `json:"choices,omitempty"` // picks offered at activation
 }
 
 // PetView is a pet's computed stat block plus its play state.

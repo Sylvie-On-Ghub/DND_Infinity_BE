@@ -486,6 +486,7 @@ type validator struct {
 	l       *ContentLibrary
 	skills  map[string]bool
 	petTags map[string]petTagUse // pet.<tag>.* targets seen, checked against creature tags at the end
+	forms   map[string]string    // declared form id -> id of the feature declaring it
 }
 
 type petTagUse struct{ kind, id string }
@@ -499,9 +500,20 @@ func (v *validator) warn(kind, id, format string, args ...any) {
 }
 
 func (l *ContentLibrary) validate() {
-	v := &validator{l: l, skills: map[string]bool{}, petTags: map[string]petTagUse{}}
+	v := &validator{l: l, skills: map[string]bool{}, petTags: map[string]petTagUse{}, forms: map[string]string{}}
 	for _, s := range l.skills {
 		v.skills[s.ID] = true
+	}
+	for _, id := range sortedKeys(l.features) {
+		f := l.features[id]
+		if f.Form == nil || f.Form.ID == "" {
+			continue
+		}
+		if first, dup := v.forms[f.Form.ID]; dup {
+			v.err("feature", f.ID, "form %q is already declared by feature %q", f.Form.ID, first)
+			continue
+		}
+		v.forms[f.Form.ID] = f.ID
 	}
 
 	for _, s := range l.skills {
@@ -557,6 +569,11 @@ func (v *validator) spellRef(kind, id, where, ref string) {
 func (v *validator) modifiers(kind, id, where string, mods []Modifier) {
 	for i, m := range mods {
 		at := fmt.Sprintf("%s modifier %d", where, i+1)
+		if m.Form != "" {
+			if _, ok := v.forms[m.Form]; !ok {
+				v.err(kind, id, "%s: unknown form %q", at, m.Form)
+			}
+		}
 		if !validTarget(m.Target, v.skills) {
 			v.err(kind, id, "%s: unknown target %q", at, m.Target)
 		} else if tag, _, ok := splitPetTarget(m.Target); ok {
@@ -572,12 +589,18 @@ func (v *validator) modifiers(kind, id, where string, mods []Modifier) {
 		}
 		switch m.Requires {
 		case "", RequiresArmour, RequiresNoHeavyOrShield, RequiresNoHeavy, RequiresNoArmourOrShield:
-		case RequiresOneWeapon, RequiresThrown, RequiresMeleeWeapon, RequiresWeapon:
+		case RequiresOneWeapon, RequiresThrown, RequiresMeleeWeapon, RequiresWeapon, RequiresStrengthAttack:
 			if m.Kind != ModAdd || !(strings.HasPrefix(m.Target, "attack.") || strings.HasPrefix(m.Target, "damage.")) {
 				v.err(kind, id, "%s: requires %q only works on attack or damage targets, with kind add", at, m.Requires)
 			}
 		default:
-			v.err(kind, id, "%s: unknown requires %q", at, m.Requires)
+			if class, ok := strings.CutPrefix(m.Requires, RequiresOnlyCasterPrefix); !ok {
+				v.err(kind, id, "%s: unknown requires %q", at, m.Requires)
+			} else if class == "" {
+				v.err(kind, id, "%s: requires %q needs a class id after the colon", at, m.Requires)
+			} else if _, known := v.l.classes[class]; !known {
+				v.err(kind, id, "%s: requires %q names unknown class %q", at, m.Requires, class)
+			}
 		}
 		if m.ValueSpeed != "" {
 			switch {
@@ -842,6 +865,28 @@ func (v *validator) checkSpellGrant(kind, id, where string, g *SpellGrant, abili
 	v.resource(kind, id, where+" spells", g.Resource)
 }
 
+// form checks the form a feature declares and the form choices it adds to forms (its own or another feature's).
+func (v *validator) form(k string, f Feature) {
+	if f.Form != nil && (f.Form.ID == "" || f.Form.Name == "") {
+		v.err(k, f.ID, "form needs an id and a name")
+	}
+	var chs []Choice
+	for _, fc := range f.FormChoices {
+		chs = append(chs, fc.Choice)
+		at := fmt.Sprintf("form choice %q", fc.ID)
+		if _, ok := v.forms[fc.Form]; !ok {
+			v.err(k, f.ID, "%s: unknown form %q", at, fc.Form)
+		}
+		if fc.Kind != ChoicePick {
+			v.err(k, f.ID, "%s: form choices must be pick choices", at)
+		}
+		if len(fc.Options) == 0 || fc.Filter != nil {
+			v.err(k, f.ID, "%s: form choices need explicit options, not a filter", at)
+		}
+	}
+	v.choices(k, f.ID, "form", chs)
+}
+
 func (v *validator) choices(kind, id, where string, chs []Choice) {
 	seen := map[string]bool{}
 	for i, ch := range chs {
@@ -958,6 +1003,7 @@ func (v *validator) feature(f Feature) {
 	v.resource(k, f.ID, "feature", f.Resource)
 	v.grants(k, f.ID, "feature", f.Grants)
 	v.choices(k, f.ID, "feature", f.Choices)
+	v.form(k, f)
 	for _, ch := range f.Choices {
 		if ch.Filter != nil && ch.Filter.Type == "spell" && f.Spells == nil {
 			v.err(k, f.ID, "choice %q picks spells, so the feature needs a spells block (with the casting ability) for them to join", ch.ID)
