@@ -144,10 +144,11 @@ type gathered struct {
 	pending     []PendingChoice
 	warnings    []Warning
 
-	acFormulas []ACFormula // from features and worn armour
-	armourWorn bool
-	heavyWorn  bool
-	shieldWorn bool
+	acFormulas  []ACFormula // from features and worn armour
+	armourWorn  bool
+	heavyWorn   bool
+	shieldWorn  bool
+	wornSources map[string]bool // source ids of worn armour and shield modifiers, which don't count while shaped
 
 	weaponItems []weaponEntry
 
@@ -1603,7 +1604,14 @@ func (g *gathered) applyInventory(c Character, lib Library) {
 			continue
 		}
 		for _, m := range it.Modifiers {
-			g.mods = append(g.mods, withSource(m, it.ID)) // item id as source: two copies don't stack
+			m = withSource(m, it.ID) // item id as source: two copies don't stack
+			if it.Kind == ItemArmour || it.Kind == ItemShield {
+				if g.wornSources == nil {
+					g.wornSources = map[string]bool{}
+				}
+				g.wornSources[m.SourceID] = true
+			}
+			g.mods = append(g.mods, m)
 		}
 		g.actions = append(g.actions, it.Actions...)
 		if it.Spells != nil {
@@ -1737,8 +1745,8 @@ func spellACFormulas(c Character, g *gathered, lib Library) []ACFormula {
 // available while the spell is castable, and only used through the override: the sheet can't
 // know whether the spell is currently active.
 //
-// While shaped, the candidates are the beast's AC and formulas tied to an active form; armour and shields
-// don't count.
+// While shaped, the candidates are the beast's AC and formulas tied to an active form, competing on value
+// (the override is ignored); armour and shields, and their ac modifiers, don't count.
 func computeAC(c Character, g *gathered, lib Library, rules Ruleset, k *calc, modOf map[Ability]int, pb, level int, shape *activeShape) (ACBreakdown, []Warning) {
 	var warns []Warning
 
@@ -1803,7 +1811,7 @@ func computeAC(c Character, g *gathered, lib Library, rules Ruleset, k *calc, mo
 	}
 
 	chosen, overridden := -1, false
-	if c.ACFormulaOverride != "" {
+	if c.ACFormulaOverride != "" && shape == nil {
 		for i, s := range all {
 			if s.f.ID == c.ACFormulaOverride {
 				chosen, overridden = i, true
@@ -1837,7 +1845,11 @@ func computeAC(c Character, g *gathered, lib Library, rules Ruleset, k *calc, mo
 	}
 
 	win := all[chosen]
-	total := k.apply(TargetAC, win.value)
+	ack := k
+	if shape != nil {
+		ack = shape.acCalc(g, k)
+	}
+	total := ack.apply(TargetAC, win.value)
 
 	options := make([]ACOption, 0, len(all))
 	for _, s := range all {

@@ -249,6 +249,11 @@ func (s *activeShape) acCandidates(g *gathered) []ACFormula {
 	return out
 }
 
+// acCalc is k's ac modifiers without those of worn armour and shields, which don't count while shaped.
+func (s *activeShape) acCalc(g *gathered, k *calc) *calc {
+	return newCalc(slices.DeleteFunc(slices.Clone(k.byTarget[TargetAC]), func(m Modifier) bool { return g.wornSources[m.SourceID] }))
+}
+
 // senses merges the beast's senses into the character's, keeping the longer range of each, sorted by name.
 func (s *activeShape) senses(own []Sense) []Sense {
 	best := map[string]int{}

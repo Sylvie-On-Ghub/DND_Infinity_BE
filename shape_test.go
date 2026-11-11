@@ -328,3 +328,37 @@ func TestShapeWarnings(t *testing.T) {
 		})
 	}
 }
+
+func TestShapeShieldIgnored(t *testing.T) {
+	lib := shapeLib()
+	lib.items = map[string]Item{"shield": {ID: "shield", Name: "Shield", Kind: ItemShield,
+		Modifiers: []Modifier{{Target: TargetAC, Kind: ModAdd, Value: 2}}}}
+	c := druidChar(4, "wolf")
+	c.Inventory = []InventoryItem{{ItemID: "shield", Quantity: 1, Equipped: true}}
+	if sh := mustCompute(t, c, lib, Ruleset{}); sh.AC != 13 {
+		t.Errorf("unshaped AC = %d, want 13 (11 + shield 2)", sh.AC)
+	}
+	ring := Modifier{Target: TargetAC, Kind: ModAdd, Value: 1, SourceID: "ring"}
+	c.ActiveForms = []ActiveForm{{ID: "wild_shape", CreatureID: "wolf"}}
+	if sh := mustCompute(t, c, lib, Ruleset{}); sh.AC != 12 {
+		t.Errorf("shaped AC = %d, want 12: the shield doesn't count", sh.AC)
+	}
+	c.Modifiers = []Modifier{ring}
+	if sh := mustCompute(t, c, lib, Ruleset{}); sh.AC != 13 {
+		t.Errorf("shaped AC with a ring = %d, want 13: other ac modifiers still apply", sh.AC)
+	}
+}
+
+func TestShapeIgnoresACOverride(t *testing.T) {
+	c := druidChar(4, "wolf", "shell")
+	c.ACFormulaOverride = "circle_forms"
+	sh := shaped(t, c, "wolf", nil)
+	if sh.AC != 12 || sh.ACDetail.FormulaID != "shape" || sh.ACDetail.Overridden {
+		t.Errorf("AC %d (%s, overridden %v), want 12 shape, not overridden", sh.AC, sh.ACDetail.FormulaID, sh.ACDetail.Overridden)
+	}
+	for _, w := range sh.Warnings {
+		if w.Code == WarnUnknownID || w.Code == WarnACRequirementUnmet {
+			t.Errorf("unexpected override warning while shaped: %+v", w)
+		}
+	}
+}
