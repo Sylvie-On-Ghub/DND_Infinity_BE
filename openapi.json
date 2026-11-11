@@ -186,6 +186,23 @@
         },
         "type": "object"
       },
+      "ActiveForm": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "picks": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
       "AddItemRequest": {
         "properties": {
           "container": {
@@ -396,6 +413,12 @@
             "description": "Warnings the user has marked as intentional, matched by key.",
             "items": {
               "$ref": "#/components/schemas/Acknowledgement"
+            },
+            "type": "array"
+          },
+          "active_forms": {
+            "items": {
+              "$ref": "#/components/schemas/ActiveForm"
             },
             "type": "array"
           },
@@ -1077,6 +1100,15 @@
           "description": {
             "type": "string"
           },
+          "form": {
+            "$ref": "#/components/schemas/FormDef"
+          },
+          "form_choices": {
+            "items": {
+              "$ref": "#/components/schemas/FormChoice"
+            },
+            "type": "array"
+          },
           "grants": {
             "$ref": "#/components/schemas/Grants"
           },
@@ -1184,6 +1216,100 @@
           "source_id": {
             "description": "The class, race or background it belongs to. A feat with no source of its own gives its own id.",
             "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "FormAction": {
+        "properties": {
+          "end": {
+            "type": "string"
+          },
+          "start": {
+            "$ref": "#/components/schemas/FormStart"
+          }
+        },
+        "type": "object"
+      },
+      "FormChoice": {
+        "properties": {
+          "Choice": {
+            "$ref": "#/components/schemas/Choice"
+          },
+          "form": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "FormDef": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "no_cost": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "FormStart": {
+        "properties": {
+          "free": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "picks": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "FormView": {
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "choices": {
+            "items": {
+              "$ref": "#/components/schemas/Choice"
+            },
+            "type": "array"
+          },
+          "feature_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "picks": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object"
+          },
+          "resource_id": {
+            "type": "string"
+          },
+          "uses_left": {
+            "type": "integer"
           }
         },
         "type": "object"
@@ -1596,6 +1722,9 @@
           },
           "dice": {
             "description": "Makes this a dice rider (for example 1d6 Sneak Attack), shown on attacks rather than added into numbers.",
+            "type": "string"
+          },
+          "form": {
             "type": "string"
           },
           "kind": {
@@ -2301,6 +2430,12 @@
             "description": "Every feature the character has, from classes, subclasses, race, background, feats and choices, in the order they resolved. The race and background themselves are listed too.",
             "items": {
               "$ref": "#/components/schemas/FeatureView"
+            },
+            "type": "array"
+          },
+          "forms": {
+            "items": {
+              "$ref": "#/components/schemas/FormView"
             },
             "type": "array"
           },
@@ -4156,6 +4291,104 @@
         ]
       }
     },
+    "/api/characters/{id}/forms": {
+      "post": {
+        "description": "For temporary states such as Rage, listed on the sheet's `forms`. Send exactly one of `start` or `end` (a form id). Starting spends a use of the form's resource unless `free` is true, and fails with 409 `no_uses` when none are left. Fill each of the form's `choices` in `picks` (choice id to option ids). Ending a form that isn't active does nothing, and nothing is refunded. To change picks, end the form and start it again with `free: true`. A long rest ends every form.",
+        "operationId": "changeForms",
+        "parameters": [
+          {
+            "description": "A character id (letters, digits, - and _), or a content id on the content routes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "start": {
+                  "id": "rage",
+                  "picks": {
+                    "rage_of_the_wilds": [
+                      "bear"
+                    ]
+                  }
+                }
+              },
+              "schema": {
+                "$ref": "#/components/schemas/FormAction"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "The updated sheet."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request: malformed JSON, an unknown field, an invalid id, or a request that can't be carried out. Rules problems are never errors; they come back as warnings on the sheet."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sign in required: the bearer token is missing, unknown or expired."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found: no such character, inventory entry, pet, feature or content."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "`already_exists`: you already have a character with that id. `version_conflict`: the character has changed since you read it, so fetch it again and retry."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Start or end a form",
+        "tags": [
+          "Play actions"
+        ]
+      }
+    },
     "/api/characters/{id}/hp": {
       "post": {
         "description": "Send exactly one of `damage`, `heal`, `temp` or `set`. Damage hits temporary HP first and stops at 0. Healing stops at max HP (and never lowers HP), and healing from 0 clears death saves. `temp` replaces temp HP. `set` bypasses every rule.",
@@ -5273,7 +5506,7 @@
     },
     "/api/characters/{id}/rest": {
       "post": {
-        "description": "Short: pact slots and short-rest resources come back. Long: also HP to max, temp HP cleared, all spell slots back, long-rest and dawn resources back, half your hit dice back (at least 1), death saves cleared, concentration ends, exhaustion drops by 1. Spending hit dice during a short rest is not automated.",
+        "description": "Short: pact slots and short-rest resources come back. Long: also HP to max, temp HP cleared, all spell slots back, long-rest and dawn resources back, half your hit dice back (at least 1), death saves cleared, concentration ends, exhaustion drops by 1, active forms end. Spending hit dice during a short rest is not automated.",
         "operationId": "rest",
         "parameters": [
           {

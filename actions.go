@@ -27,6 +27,10 @@ func badReq(format string, args ...any) error {
 	return &reqError{Code: "bad_request", Msg: fmt.Sprintf(format, args...)}
 }
 
+func noUses(format string, args ...any) error {
+	return &reqError{Code: "no_uses", Msg: fmt.Sprintf(format, args...)}
+}
+
 func notFound(format string, args ...any) error {
 	return &reqError{Code: "not_found", Msg: fmt.Sprintf(format, args...)}
 }
@@ -217,7 +221,7 @@ func restoreResources(c *Character, sh Sheet, match func(RechargeType) bool) {
 //	short: pact slots and short-rest resources come back, and short_rest_regain uses of other resources.
 //	long:  also HP to max, temp HP cleared, all slots back, long-rest and dawn resources back,
 //	       half your hit dice back (at least 1), death saves cleared, concentration ends,
-//	       exhaustion drops by 1.
+//	       exhaustion drops by 1, forms end.
 //
 // Spending hit dice during a short rest is not automated.
 func ApplyRest(c *Character, sh Sheet, kind string) error {
@@ -242,6 +246,7 @@ func ApplyRest(c *Character, sh Sheet, kind string) error {
 		c.PactSlotsUsed = 0
 		c.DeathSaves = [2]int{}
 		c.Concentrating = ""
+		c.ActiveForms = nil
 		if c.Exhaustion > 0 {
 			c.Exhaustion--
 		}
@@ -1152,4 +1157,68 @@ func MergePatchCharacter(current Character, patch []byte) (Character, error) {
 		return Character{}, fmt.Errorf("%w: a character's id cannot be changed", ErrBadPatch)
 	}
 	return out, nil
+}
+
+// FormAction takes exactly one of start or end.
+type FormAction struct {
+	Start *FormStart `json:"start"`
+	End   string     `json:"end"` // form id
+}
+
+type FormStart struct {
+	ID    string              `json:"id"`
+	Picks map[string][]string `json:"picks,omitempty"`
+	Free  bool                `json:"free,omitempty"` // don't spend a use
+}
+
+// ApplyForm starts or ends a form. sh is the pre-action sheet, which says what forms exist, what
+// they offer to pick and how many uses are left. Ending a form that isn't active does nothing, and
+// nothing is refunded.
+func ApplyForm(c *Character, sh Sheet, a FormAction) error {
+	if (a.Start == nil) == (a.End == "") {
+		return badReq("send exactly one of start or end")
+	}
+	if a.End != "" {
+		c.ActiveForms = slices.DeleteFunc(c.ActiveForms, func(f ActiveForm) bool { return f.ID == a.End })
+		return nil
+	}
+
+	start := a.Start
+	idx := slices.IndexFunc(sh.Forms, func(f FormView) bool { return f.ID == start.ID })
+	if idx < 0 {
+		return badReq("unknown form %q", start.ID)
+	}
+	view := sh.Forms[idx]
+	if slices.ContainsFunc(c.ActiveForms, func(f ActiveForm) bool { return f.ID == start.ID }) {
+		return badReq("form %q is already active", start.ID)
+	}
+
+	for id := range start.Picks {
+		if !slices.ContainsFunc(view.Choices, func(ch Choice) bool { return ch.ID == id }) {
+			return badReq("form %q has no choice %q", start.ID, id)
+		}
+	}
+	for _, ch := range view.Choices {
+		picked := start.Picks[ch.ID]
+		if len(picked) == 0 || len(picked) > ch.Count {
+			return badReq("choice %q needs between 1 and %d picks", ch.ID, ch.Count)
+		}
+		for _, p := range picked {
+			if !slices.ContainsFunc(ch.Options, func(o Option) bool { return o.ID == p }) {
+				return badReq("%q is not an option for choice %q", p, ch.ID)
+			}
+		}
+	}
+
+	if view.ResourceID != "" && !start.Free {
+		if view.UsesLeft < 1 {
+			return noUses("no uses of %s left", view.Name)
+		}
+		one := 1
+		if err := ApplyResource(c, view.ResourceID, ResourceAction{Spend: &one}); err != nil {
+			return err
+		}
+	}
+	c.ActiveForms = append(c.ActiveForms, ActiveForm{ID: start.ID, Picks: start.Picks})
+	return nil
 }

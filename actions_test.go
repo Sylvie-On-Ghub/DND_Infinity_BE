@@ -869,3 +869,100 @@ func TestMergePatchRejections(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Forms
+// ---------------------------------------------------------------------------
+
+func formSheet(usesLeft int) Sheet {
+	return Sheet{Forms: []FormView{{ID: "rage", Name: "Rage", FeatureID: "rager", ResourceID: "rager", UsesLeft: usesLeft,
+		Choices: []Choice{{ID: "animal", Kind: "pick", Count: 1, Options: []Option{{ID: "bear"}, {ID: "wolf"}}}}}}}
+}
+
+func startRage(picks map[string][]string, free bool) FormAction {
+	return FormAction{Start: &FormStart{ID: "rage", Picks: picks, Free: free}}
+}
+
+func TestApplyFormStart(t *testing.T) {
+	c := Character{}
+	picks := map[string][]string{"animal": {"bear"}}
+	if err := ApplyForm(&c, formSheet(1), startRage(picks, false)); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(c.ActiveForms, []ActiveForm{{ID: "rage", Picks: picks}}) || c.ResourceUsed["rager"] != 1 {
+		t.Errorf("forms = %+v, used = %v", c.ActiveForms, c.ResourceUsed)
+	}
+}
+
+func TestApplyFormStartFree(t *testing.T) {
+	c := Character{}
+	if err := ApplyForm(&c, formSheet(1), startRage(map[string][]string{"animal": {"wolf"}}, true)); err != nil {
+		t.Fatal(err)
+	}
+	if len(c.ActiveForms) != 1 || len(c.ResourceUsed) != 0 {
+		t.Errorf("forms = %+v, used = %v", c.ActiveForms, c.ResourceUsed)
+	}
+}
+
+func TestApplyFormNoUses(t *testing.T) {
+	c := Character{}
+	err := ApplyForm(&c, formSheet(0), startRage(map[string][]string{"animal": {"bear"}}, false))
+	wantCode(t, err, "no_uses")
+	if len(c.ActiveForms) != 0 || len(c.ResourceUsed) != 0 {
+		t.Errorf("character changed: %+v", c)
+	}
+	if err := ApplyForm(&c, formSheet(0), startRage(map[string][]string{"animal": {"bear"}}, true)); err != nil || len(c.ActiveForms) != 1 {
+		t.Errorf("free start with no uses: err = %v, forms = %+v", err, c.ActiveForms)
+	}
+}
+
+func TestApplyFormBadRequests(t *testing.T) {
+	active := Character{ActiveForms: []ActiveForm{{ID: "rage"}}}
+	bear := map[string][]string{"animal": {"bear"}}
+	tests := map[string]struct {
+		c Character
+		a FormAction
+	}{
+		"neither":        {Character{}, FormAction{}},
+		"both":           {Character{}, FormAction{Start: &FormStart{ID: "rage", Picks: bear}, End: "rage"}},
+		"unknown form":   {Character{}, FormAction{Start: &FormStart{ID: "nope"}}},
+		"already active": {active, startRage(bear, false)},
+		"missing pick":   {Character{}, startRage(nil, false)},
+		"unknown choice": {Character{}, startRage(map[string][]string{"animal": {"bear"}, "zzz": {"x"}}, false)},
+		"unknown option": {Character{}, startRage(map[string][]string{"animal": {"tiger"}}, false)},
+		"too many":       {Character{}, startRage(map[string][]string{"animal": {"bear", "wolf"}}, false)},
+	}
+	for name, tc := range tests {
+		c := tc.c
+		if err := ApplyForm(&c, formSheet(1), tc.a); !isBadRequest(err) {
+			t.Errorf("%s: err = %v, want bad_request", name, err)
+		}
+	}
+}
+
+func TestApplyFormEnd(t *testing.T) {
+	c := Character{ActiveForms: []ActiveForm{{ID: "rage"}}}
+	if err := ApplyForm(&c, formSheet(1), FormAction{End: "rage"}); err != nil || len(c.ActiveForms) != 0 {
+		t.Errorf("err = %v, forms = %+v", err, c.ActiveForms)
+	}
+	if err := ApplyForm(&c, formSheet(1), FormAction{End: "rage"}); err != nil || len(c.ActiveForms) != 0 {
+		t.Errorf("ending an inactive form: err = %v, forms = %+v", err, c.ActiveForms)
+	}
+}
+
+func TestApplyFormEndRemovesUnavailable(t *testing.T) {
+	c := Character{ActiveForms: []ActiveForm{{ID: "holy_nimbus"}}}
+	if err := ApplyForm(&c, formSheet(1), FormAction{End: "holy_nimbus"}); err != nil || len(c.ActiveForms) != 0 {
+		t.Errorf("err = %v, forms = %+v", err, c.ActiveForms)
+	}
+}
+
+func TestApplyRestClearsForms(t *testing.T) {
+	c := Character{ActiveForms: []ActiveForm{{ID: "rage"}}}
+	if err := ApplyRest(&c, Sheet{}, "short"); err != nil || len(c.ActiveForms) != 1 {
+		t.Errorf("short rest: err = %v, forms = %+v", err, c.ActiveForms)
+	}
+	if err := ApplyRest(&c, Sheet{}, "long"); err != nil || c.ActiveForms != nil {
+		t.Errorf("long rest: err = %v, forms = %+v", err, c.ActiveForms)
+	}
+}

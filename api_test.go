@@ -1029,3 +1029,39 @@ func TestAPIPetsFlow(t *testing.T) {
 		t.Errorf("owl = %+v", owl)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Forms
+// ---------------------------------------------------------------------------
+
+func TestAPIForms(t *testing.T) {
+	lib := mustLoad(t, LoadOptions{}, memPack("p", map[string]string{
+		"features/rager.json": `{"id":"rager","name":"Rager","origin":"feat","form":{"id":"rage","name":"Rage"},
+			"resource":{"name":"Rage","max":2,"recharge":"long_rest"}}`,
+	}))
+	if lib.HasErrors() {
+		dumpIssues(t, lib)
+		t.Fatal("the forms pack should load")
+	}
+	srv, store := newTestServer(t, func(cfg *Config) { cfg.Library = lib })
+	saveFixture(t, store, Character{ID: "r1", Name: "Rager", FeatureIDs: []string{"rager"}})
+	path := "/api/characters/r1/forms"
+
+	e := post(t, srv, path, `{"start":{"id":"rage"}}`)
+	if len(e.Sheet.Forms) != 1 || !e.Sheet.Forms[0].Active {
+		t.Fatalf("forms after start: %+v", e.Sheet.Forms)
+	}
+	wantError(t, call(t, srv, http.MethodPost, path, `{"start":{"id":"rage"}}`), http.StatusBadRequest, "bad_request")
+	wantError(t, call(t, srv, http.MethodPost, path, `{"start":{"id":"nope"}}`), http.StatusBadRequest, "bad_request")
+
+	e = post(t, srv, path, `{"end":"rage"}`)
+	if e.Sheet.Forms[0].Active {
+		t.Errorf("form still active after end: %+v", e.Sheet.Forms[0])
+	}
+	post(t, srv, "/api/characters/r1/resources/rager", `{"spend": 1}`) // the second use is gone
+	wantError(t, call(t, srv, http.MethodPost, path, `{"start":{"id":"rage"}}`), http.StatusConflict, "no_uses")
+	e = post(t, srv, path, `{"start":{"id":"rage","free":true}}`)
+	if !e.Sheet.Forms[0].Active {
+		t.Errorf("a free start should work with no uses left")
+	}
+}
