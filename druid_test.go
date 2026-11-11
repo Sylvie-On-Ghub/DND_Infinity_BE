@@ -323,7 +323,7 @@ func TestMoonImprovedCircleForms(t *testing.T) {
 }
 
 func TestMoonSpells(t *testing.T) {
-	lib := loadElfLib(t) // Starry Wisp lives in the core-races pack
+	lib := loadDruidLib(t)
 	has := func(level int, id string) bool {
 		src := druidSource(t, mustCompute(t, moonAt(level), lib, Ruleset{}))
 		for _, s := range append(slices.Clone(src.Cantrips), src.Spells...) { // Starry Wisp is a cantrip
