@@ -27,6 +27,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -478,7 +479,7 @@ var (
 		RechargeShortRest: true, RechargeLongRest: true, RechargeDawn: true, RechargeNone: true,
 	}
 	itemKinds   = map[ItemKind]bool{ItemArmour: true, ItemShield: true, ItemWeapon: true, ItemOther: true}
-	filterTypes = map[string]bool{"skill": true, "tool": true, "language": true, "feat": true, "feature_tag": true, "spell": true}
+	filterTypes = map[string]bool{"skill": true, "tool": true, "language": true, "feat": true, "feature_tag": true, "spell": true, "creature": true}
 	prepModes   = map[string]bool{"": true, PrepKnown: true, PrepPrepared: true, PrepBook: true}
 )
 
@@ -574,6 +575,9 @@ func (v *validator) modifiers(kind, id, where string, mods []Modifier) {
 			if _, ok := v.forms[m.Form]; !ok {
 				v.err(kind, id, "%s: unknown form %q", at, m.Form)
 			}
+		}
+		if m.ValueFormula != nil {
+			v.formula(kind, id, at+" value_formula", *m.ValueFormula)
 		}
 		if !validTarget(m.Target, v.skills) {
 			v.err(kind, id, "%s: unknown target %q", at, m.Target)
@@ -769,6 +773,13 @@ func (v *validator) creature(c Creature) {
 			v.err(k, c.ID, "skills: unknown skill %q", sk)
 		}
 	}
+	if c.CR != "" {
+		if _, ok := parseCR(c.CR); !ok {
+			v.err(k, c.ID, "cr %q must be 0, 1/8, 1/4, 1/2, or a whole number from 1 to 30", c.CR)
+		}
+	} else if slices.Contains(c.Tags, "wild_shape") {
+		v.err(k, c.ID, "tagged wild_shape, so it needs a cr")
+	}
 	v.creatureFormula(c.ID, "ac", c.AC)
 	v.creatureFormula(c.ID, "hp", c.HP)
 	if c.PB != nil {
@@ -814,11 +825,38 @@ func (v *validator) formula(kind, id, where string, f Formula) {
 	}
 }
 
+// shape checks a shape form: it needs limits, a known class, valid CRs, and a creature to become.
+func (v *validator) shape(kind, id string, s ShapeDef) {
+	if _, ok := v.l.classes[s.ClassID]; !ok {
+		v.err(kind, id, "shape: unknown class_id %q", s.ClassID)
+	}
+	if len(s.Limits) == 0 {
+		v.err(kind, id, "shape: needs at least one entry in limits")
+	}
+	for i, lim := range s.Limits {
+		if _, ok := parseCR(lim.MaxCR); !ok {
+			v.err(kind, id, "shape limit %d: max_cr %q must be 0, 1/8, 1/4, 1/2, or a whole number from 1 to 30", i+1, lim.MaxCR)
+		}
+	}
+	v.formula(kind, id, "shape temp_hp", s.TempHP)
+	for _, c := range v.l.creatures {
+		if slices.Contains(c.Tags, s.CreatureTag) {
+			return
+		}
+	}
+	v.err(kind, id, "shape: no creature has creature_tag %q", s.CreatureTag)
+}
+
 func (v *validator) acFormula(kind, id, where string, f ACFormula) {
 	if f.ID == "" {
 		v.err(kind, id, "%s: ac formula needs an id", where)
 	}
 	v.formula(kind, id, where+" ac formula "+f.ID, f.Formula)
+	if f.Form != "" {
+		if _, ok := v.forms[f.Form]; !ok {
+			v.err(kind, id, "%s ac formula %s: unknown form %q", where, f.ID, f.Form)
+		}
+	}
 }
 
 func (v *validator) checkableTarget(t string) bool {
@@ -870,6 +908,9 @@ func (v *validator) checkSpellGrant(kind, id, where string, g *SpellGrant, abili
 func (v *validator) form(k string, f Feature) {
 	if f.Form != nil && (f.Form.ID == "" || f.Form.Name == "") {
 		v.err(k, f.ID, "form needs an id and a name")
+	}
+	if f.Form != nil && f.Form.Shape != nil {
+		v.shape(k, f.ID, *f.Form.Shape)
 	}
 	if fm := f.Form; fm != nil && !fm.NoCost && !featureHasResource(f) {
 		v.warn(k, f.ID, "form %s has no resource; set no_cost if starting it is free", fm.ID)
@@ -967,7 +1008,7 @@ func (v *validator) choices(kind, id, where string, chs []Choice) {
 
 		if ch.Filter != nil {
 			if !filterTypes[ch.Filter.Type] {
-				v.err(kind, id, "%s: unknown filter type %q (skill, tool, language, feat, feature_tag, spell)", at, ch.Filter.Type)
+				v.err(kind, id, "%s: unknown filter type %q (skill, tool, language, feat, feature_tag, spell, creature)", at, ch.Filter.Type)
 			}
 			if ch.Filter.Type == "feature_tag" && ch.Filter.Tag == "" && len(ch.Filter.Allowed) == 0 {
 				v.err(kind, id, "%s: a feature_tag filter needs a tag or an allowed list", at)

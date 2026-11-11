@@ -778,3 +778,55 @@ func TestPetTargetsLoad(t *testing.T) {
 		t.Error("a pet target with a bad inner target should be an error")
 	}
 }
+
+func TestLoaderShapeValidation(t *testing.T) {
+	const shape = `{"creature_tag":"wild_shape","class_id":"druid","temp_hp":{"base":0},"limits":[{"min_level":2,"known":4,"max_cr":"1/4"}]}`
+	files := func(over map[string]string) map[string]string {
+		m := map[string]string{
+			"classes/druid.json":  `{"id":"druid","name":"Druid","hit_die":8,"levels":[[]]}`,
+			"creatures/wolf.json": `{"id":"wolf","name":"Wolf","cr":"1/4","tags":["wild_shape"],"abilities":{"str":12}}`,
+			"features/ws.json":    `{"id":"ws","name":"Wild Shape","origin":"feat","form":{"id":"wild_shape","name":"Wild Shape","no_cost":true,"shape":` + shape + `}}`,
+		}
+		for k, v := range over {
+			m[k] = v
+		}
+		return m
+	}
+	feat := func(shapeJSON string) string {
+		return `{"id":"ws","name":"Wild Shape","origin":"feat","form":{"id":"wild_shape","name":"Wild Shape","no_cost":true,"shape":` + shapeJSON + `}}`
+	}
+
+	t.Run("valid", func(t *testing.T) {
+		lib := mustLoad(t, LoadOptions{Strict: true}, memPack("p", files(map[string]string{
+			"features/lvl.json": `{"id":"lvl","name":"Lvl","origin":"feat","modifiers":[{"target":"shape.temp_hp","kind":"set","value_formula":{"base":0,"terms":[{"source":"class_level.druid","mul":3}]},"form":"wild_shape"}],
+				"choices":[{"id":"c","prompt":"p","kind":"pick","count":1,"filter":{"type":"creature","tag":"wild_shape"}}]}`,
+			"features/ac.json": `{"id":"ac","name":"AC","origin":"feat","ac_formulas":[{"id":"x","name":"X","form":"wild_shape","formula":{"base":10}}]}`,
+		})))
+		for _, is := range lib.Issues() {
+			t.Error(is)
+		}
+	})
+
+	cases := []struct {
+		name  string
+		over  map[string]string
+		subst string
+	}{
+		{"bad cr", map[string]string{"creatures/wolf.json": `{"id":"wolf","name":"Wolf","cr":"1/3","abilities":{"str":12}}`}, "cr"},
+		{"tagged without cr", map[string]string{"creatures/wolf.json": `{"id":"wolf","name":"Wolf","tags":["wild_shape"],"abilities":{"str":12}}`}, "cr"},
+		{"no limits", map[string]string{"features/ws.json": feat(`{"creature_tag":"wild_shape","class_id":"druid"}`)}, "limits"},
+		{"bad class", map[string]string{"features/ws.json": feat(`{"creature_tag":"wild_shape","class_id":"nope","limits":[{"min_level":2,"known":4,"max_cr":"1/4"}]}`)}, "class_id"},
+		{"bad max_cr", map[string]string{"features/ws.json": feat(`{"creature_tag":"wild_shape","class_id":"druid","limits":[{"min_level":2,"known":4,"max_cr":"big"}]}`)}, "max_cr"},
+		{"no creature has tag", map[string]string{"features/ws.json": feat(`{"creature_tag":"moon","class_id":"druid","limits":[{"min_level":2,"known":4,"max_cr":"1/4"}]}`)}, "creature_tag"},
+		{"bad value_formula", map[string]string{"features/m.json": `{"id":"m","name":"M","origin":"feat","modifiers":[{"target":"shape.temp_hp","kind":"set","value_formula":{"base":0,"terms":[{"source":"bogus"}]}}]}`}, "bogus"},
+		{"bad ac form", map[string]string{"features/ac.json": `{"id":"ac","name":"AC","origin":"feat","ac_formulas":[{"id":"x","name":"X","form":"nope","formula":{"base":10}}]}`}, "nope"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := LoadPacks(LoadOptions{Strict: true}, memPack("p", files(tc.over)))
+			if err == nil || !strings.Contains(err.Error(), tc.subst) {
+				t.Errorf("want an error mentioning %q, got %v", tc.subst, err)
+			}
+		})
+	}
+}

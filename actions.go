@@ -1166,9 +1166,10 @@ type FormAction struct {
 }
 
 type FormStart struct {
-	ID    string              `json:"id"`
-	Picks map[string][]string `json:"picks,omitempty"`
-	Free  bool                `json:"free,omitempty"` // don't spend a use
+	ID         string              `json:"id"`
+	Picks      map[string][]string `json:"picks,omitempty"`
+	CreatureID string              `json:"creature_id,omitempty"` // shape forms: the known form to become
+	Free       bool                `json:"free,omitempty"`        // don't spend a use
 }
 
 // ApplyForm starts or ends a form. sh is the pre-action sheet, which says what forms exist, what

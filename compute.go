@@ -912,6 +912,7 @@ var fixedTargets = map[string]bool{
 	TargetCarryCapacity: true, TargetJackOfAllTrades: true, TargetAttunementMax: true,
 	TargetDamageAll: true, TargetDamageMelee: true, TargetDamageRanged: true, TargetDamageSpell: true,
 	TargetShortRestExhaustion: true,
+	TargetShapeMaxCR:          true, TargetShapeTempHP: true, TargetShapeCastSpells: true,
 }
 
 func isAbility(s string) bool {
