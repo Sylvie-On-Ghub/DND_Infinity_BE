@@ -112,9 +112,9 @@ func (g *gathered) formPickMods(e formEntry, af ActiveForm) []Modifier {
 		}
 		for n, id := range picks {
 			opt, ok := findOption(ch.Options, id)
-			if !ok || n >= ch.Count {
+			if !ok || n >= ch.Count || slices.Contains(picks[:n], id) {
 				g.warnings = append(g.warnings, mkWarning(WarnFormPickInvalid, ce.featureID, ch.ID, "", e.def.ID,
-					fmt.Sprintf("%s: pick %q for %q isn't an offered option or is over the count of %d, so it is ignored", e.def.Name, id, ch.ID, ch.Count)))
+					fmt.Sprintf("%s: pick %q for %q isn't an offered option, repeats an earlier pick or is over the count of %d, so it is ignored", e.def.Name, id, ch.ID, ch.Count)))
 				continue
 			}
 			for _, m := range opt.Modifiers {

@@ -930,6 +930,7 @@ func TestApplyFormBadRequests(t *testing.T) {
 		"missing pick":   {Character{}, startRage(nil, false)},
 		"unknown choice": {Character{}, startRage(map[string][]string{"animal": {"bear"}, "zzz": {"x"}}, false)},
 		"unknown option": {Character{}, startRage(map[string][]string{"animal": {"tiger"}}, false)},
+		"duplicate":      {Character{}, startRage(map[string][]string{"animal": {"bear", "bear"}}, false)},
 		"too many":       {Character{}, startRage(map[string][]string{"animal": {"bear", "wolf"}}, false)},
 	}
 	for name, tc := range tests {
@@ -937,6 +938,14 @@ func TestApplyFormBadRequests(t *testing.T) {
 		if err := ApplyForm(&c, formSheet(1), tc.a); !isBadRequest(err) {
 			t.Errorf("%s: err = %v, want bad_request", name, err)
 		}
+	}
+
+	// Count 1 would reject this as too many, so allow two picks to reach the duplicate check.
+	two := formSheet(1)
+	two.Forms[0].Choices[0].Count = 2
+	c := Character{}
+	if err := ApplyForm(&c, two, startRage(map[string][]string{"animal": {"bear", "bear"}}, false)); !isBadRequest(err) {
+		t.Errorf("duplicate pick: err = %v, want bad_request", err)
 	}
 }
 

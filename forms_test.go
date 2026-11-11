@@ -159,6 +159,28 @@ func TestFormsPickWarnings(t *testing.T) {
 	}
 }
 
+func TestFormsDuplicatePick(t *testing.T) {
+	lib := formsLib()
+	wild := lib.features["wild"]
+	wild.FormChoices[0].Choice.Count = 2
+	c := formsChar("rager", "wild")
+	c.ActiveForms = []ActiveForm{{ID: "rage", Picks: map[string][]string{"animal": {"wolf", "wolf"}}}}
+	sh := mustCompute(t, c, lib, Ruleset{})
+
+	if !hasWarning(sh, WarnFormPickInvalid) {
+		t.Errorf("want %s, got %+v", WarnFormPickInvalid, sh.Warnings)
+	}
+	notes := 0
+	for _, n := range sh.Notes {
+		if n.Note == "Wolf" {
+			notes++
+		}
+	}
+	if notes != 1 {
+		t.Errorf("the wolf note applied %d times, want once: %+v", notes, sh.Notes)
+	}
+}
+
 func TestFormsStalePicks(t *testing.T) {
 	c := formsChar("rager")
 	c.ActiveForms = []ActiveForm{{ID: "rage", Picks: map[string][]string{"animal": {"bear"}}}}

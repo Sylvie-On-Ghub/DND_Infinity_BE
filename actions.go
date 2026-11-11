@@ -1203,7 +1203,10 @@ func ApplyForm(c *Character, sh Sheet, a FormAction) error {
 		if len(picked) == 0 || len(picked) > ch.Count {
 			return badReq("choice %q needs between 1 and %d picks", ch.ID, ch.Count)
 		}
-		for _, p := range picked {
+		for n, p := range picked {
+			if slices.Contains(picked[:n], p) {
+				return badReq("%q is picked twice for choice %q", p, ch.ID)
+			}
 			if !slices.ContainsFunc(ch.Options, func(o Option) bool { return o.ID == p }) {
 				return badReq("%q is not an option for choice %q", p, ch.ID)
 			}
