@@ -812,8 +812,8 @@ func TestLoaderShapeValidation(t *testing.T) {
 		over  map[string]string
 		subst string
 	}{
-		{"bad cr", map[string]string{"creatures/wolf.json": `{"id":"wolf","name":"Wolf","cr":"1/3","abilities":{"str":12}}`}, "cr"},
-		{"tagged without cr", map[string]string{"creatures/wolf.json": `{"id":"wolf","name":"Wolf","tags":["wild_shape"],"abilities":{"str":12}}`}, "cr"},
+		{"bad cr", map[string]string{"creatures/wolf.json": `{"id":"wolf","name":"Wolf","cr":"1/3","tags":["wild_shape"],"abilities":{"str":12}}`}, "must be 0, 1/8"},
+		{"tagged without cr", map[string]string{"creatures/wolf.json": `{"id":"wolf","name":"Wolf","tags":["wild_shape"],"abilities":{"str":12}}`}, "needs a cr"},
 		{"no limits", map[string]string{"features/ws.json": feat(`{"creature_tag":"wild_shape","class_id":"druid"}`)}, "limits"},
 		{"bad class", map[string]string{"features/ws.json": feat(`{"creature_tag":"wild_shape","class_id":"nope","limits":[{"min_level":2,"known":4,"max_cr":"1/4"}]}`)}, "class_id"},
 		{"bad max_cr", map[string]string{"features/ws.json": feat(`{"creature_tag":"wild_shape","class_id":"druid","limits":[{"min_level":2,"known":4,"max_cr":"big"}]}`)}, "max_cr"},
