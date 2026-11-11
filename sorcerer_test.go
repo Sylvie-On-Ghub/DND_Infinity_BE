@@ -293,3 +293,62 @@ func TestSorcererSharedSpells(t *testing.T) {
 		t.Errorf("disintegrate = %+v, want 10d6 plus 40", s)
 	}
 }
+
+func TestInnateSorceryForm(t *testing.T) {
+	lib := loadElfLib(t)
+	c := sorcererAt(1, "")
+	off := mustCompute(t, c, lib, Ruleset{})
+	noContentWarnings(t, off)
+	if got := sorcererSource(t, off).SaveDC; got != 13 {
+		t.Errorf("off: save DC = %d, want 13", got)
+	}
+	if n, ok := barbNote(off, "spell.save_dc", ModAdd); !ok || n.Condition != "while Innate Sorcery is active" {
+		t.Errorf("off: save DC note = %+v (found %v), want condition %q", n, ok, "while Innate Sorcery is active")
+	}
+
+	c.ActiveForms = []ActiveForm{{ID: "innate_sorcery"}}
+	on := mustCompute(t, c, lib, Ruleset{})
+	noContentWarnings(t, on)
+	if got := sorcererSource(t, on).SaveDC; got != 14 {
+		t.Errorf("on: save DC = %d, want 14", got)
+	}
+	if n, ok := barbNote(on, "spell.attack", ModAdvantage); !ok || n.Condition != "" {
+		t.Errorf("on: spell attack advantage note = %+v (found %v), want it unconditional", n, ok)
+	}
+
+	// With a second spellcasting class the bonus isn't for every spell, so it stays a note.
+	multi := sorcererAt(1, "")
+	multi.Classes = append(multi.Classes, ClassLevel{ClassID: "wizard", Level: 1})
+	multi.ActiveForms = []ActiveForm{{ID: "innate_sorcery"}}
+	sh := mustCompute(t, multi, lib, Ruleset{})
+	noContentWarnings(t, sh)
+	if got := sorcererSource(t, sh).SaveDC; got != 13 {
+		t.Errorf("multiclass: sorcerer save DC = %d, want 13 (unchanged)", got)
+	}
+	const cond = "with Sorcerer spells"
+	if n, ok := barbNote(sh, "spell.save_dc", ModAdd); !ok || n.Condition != cond {
+		t.Errorf("multiclass: save DC note = %+v (found %v), want condition %q", n, ok, cond)
+	}
+	if n, ok := barbNote(sh, "spell.attack", ModAdvantage); !ok || n.Condition != cond {
+		t.Errorf("multiclass: spell attack note = %+v (found %v), want condition %q", n, ok, cond)
+	}
+}
+
+func TestDragonWingsForm(t *testing.T) {
+	lib := loadElfLib(t)
+	c := sorcererAt(18, "draconic")
+	off := mustCompute(t, c, lib, Ruleset{})
+	noContentWarnings(t, off)
+	if off.Speeds[SpeedFly] != 0 {
+		t.Errorf("off: fly speed = %d, want none", off.Speeds[SpeedFly])
+	}
+	if n, ok := barbNote(off, "speed.fly", ModAdd); !ok || n.Condition != "while Dragon Wings is active" {
+		t.Errorf("off: fly note = %+v (found %v), want condition %q", n, ok, "while Dragon Wings is active")
+	}
+	c.ActiveForms = []ActiveForm{{ID: "dragon_wings"}}
+	on := mustCompute(t, c, lib, Ruleset{})
+	noContentWarnings(t, on)
+	if on.Speeds[SpeedFly] != 60 {
+		t.Errorf("on: fly speed = %d, want 60", on.Speeds[SpeedFly])
+	}
+}
