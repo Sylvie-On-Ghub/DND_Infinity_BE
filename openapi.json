@@ -417,6 +417,7 @@
             "type": "array"
           },
           "active_forms": {
+            "description": "Forms that are switched on, with the picks made at activation. Normally changed through POST /api/characters/{id}/forms rather than written directly. A long rest clears it.",
             "items": {
               "$ref": "#/components/schemas/ActiveForm"
             },
@@ -1101,9 +1102,15 @@
             "type": "string"
           },
           "form": {
-            "$ref": "#/components/schemas/FormDef"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FormDef"
+              }
+            ],
+            "description": "A form this feature lets the character switch on. Its resource, if any, is spent when the form starts."
           },
           "form_choices": {
+            "description": "Picks offered when a form is switched on, added to a form declared by this or another feature (Rage's Wild Heart animal).",
             "items": {
               "$ref": "#/components/schemas/FormChoice"
             },
@@ -1233,10 +1240,50 @@
       },
       "FormChoice": {
         "properties": {
-          "Choice": {
-            "$ref": "#/components/schemas/Choice"
+          "count": {
+            "type": "integer"
+          },
+          "filter": {
+            "$ref": "#/components/schemas/PoolFilter"
           },
           "form": {
+            "type": "string"
+          },
+          "grant_level": {
+            "enum": [
+              "none",
+              "half",
+              "trained",
+              "expert"
+            ],
+            "type": "string"
+          },
+          "group": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "pick",
+              "allocate"
+            ],
+            "type": "string"
+          },
+          "max_per_option": {
+            "type": "integer"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/Option"
+            },
+            "type": "array"
+          },
+          "points": {
+            "type": "integer"
+          },
+          "prompt": {
             "type": "string"
           }
         },
@@ -1725,6 +1772,7 @@
             "type": "string"
           },
           "form": {
+            "description": "In content: the form this modifier belongs to. It applies only while that form is active; otherwise it shows as a situational note, \"while \u003cName\u003e is active\". Never on the sheet.",
             "type": "string"
           },
           "kind": {
@@ -2434,6 +2482,7 @@
             "type": "array"
           },
           "forms": {
+            "description": "Forms the character can switch on (Rage, Bladesong), each with whether it is active, the uses left and the picks offered when it is activated. Start and end them with POST /api/characters/{id}/forms.",
             "items": {
               "$ref": "#/components/schemas/FormView"
             },

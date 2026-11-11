@@ -350,7 +350,7 @@ const (
 	WarnFormUnavailable    WarningCode = "form_unavailable"  // an active form whose feature the character no longer has
 	WarnFormPickMissing    WarningCode = "form_pick_missing" // an active form with a required pick not made
 	WarnFormPickInvalid    WarningCode = "form_pick_invalid" // a stored form pick that doesn't match an offered option
-	WarnFormUnknown        WarningCode = "form_unknown"      // an active form no longer in the library
+	WarnFormUnknown        WarningCode = "form_unknown"      // an ad hoc modifier names a form the character doesn't have
 )
 
 type Warning struct {

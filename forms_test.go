@@ -265,3 +265,47 @@ func TestOnlyCasterRequirement(t *testing.T) {
 		t.Errorf("note = %+v (found %v), want condition %q", n, ok, "with Sorcerer spells")
 	}
 }
+
+func TestFormsPickSourcesDontDedupe(t *testing.T) {
+	lib := formsLib()
+	lib.features["wild"] = Feature{ID: "wild", Name: "Wild", FormChoices: []FormChoice{{Form: "rage", Choice: Choice{
+		ID: "animal", Kind: ChoicePick, Count: 2, Options: []Option{
+			{ID: "bear", Modifiers: []Modifier{{Target: "speed.walk", Kind: ModAdd, Value: 5}}},
+			{ID: "wolf", Modifiers: []Modifier{{Target: "speed.walk", Kind: ModAdd, Value: 5}}},
+		}}}}}
+	base := mustCompute(t, formsChar("rager", "wild"), lib, Ruleset{})
+	c := formsChar("rager", "wild")
+	c.ActiveForms = []ActiveForm{{ID: "rage", Picks: map[string][]string{"animal": {"bear", "wolf"}}}}
+	sh := mustCompute(t, c, lib, Ruleset{})
+
+	if sh.Speeds[SpeedWalk] != base.Speeds[SpeedWalk]+10 {
+		t.Errorf("walk speed = %d, want %d: both picks should apply", sh.Speeds[SpeedWalk], base.Speeds[SpeedWalk]+10)
+	}
+}
+
+func TestFormsDuplicateActiveEntries(t *testing.T) {
+	c := formsChar("rager", "wild")
+	c.ActiveForms = []ActiveForm{
+		{ID: "rage", Picks: map[string][]string{"animal": {"bear"}}},
+		{ID: "rage", Picks: map[string][]string{"animal": {"nope"}}},
+		{ID: "gone"},
+		{ID: "gone"},
+	}
+	sh := mustCompute(t, c, formsLib(), Ruleset{})
+
+	unavailable := 0
+	for _, w := range sh.Warnings {
+		if w.Code == WarnFormUnavailable {
+			unavailable++
+		}
+		if w.Code == WarnFormPickInvalid {
+			t.Errorf("the second rage entry should be ignored, got %+v", w)
+		}
+	}
+	if unavailable != 1 {
+		t.Errorf("%d %s warnings, want 1: %+v", unavailable, WarnFormUnavailable, sh.Warnings)
+	}
+	if len(sh.Forms) != 1 || !reflect.DeepEqual(sh.Forms[0].Picks["animal"], []string{"bear"}) {
+		t.Errorf("forms = %+v, want the first entry's picks", sh.Forms)
+	}
+}

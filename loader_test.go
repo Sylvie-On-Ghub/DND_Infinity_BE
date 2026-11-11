@@ -267,9 +267,42 @@ func TestValidationFormChoiceShape(t *testing.T) {
 	}
 }
 
+func TestValidationFormChoiceGrantsAndCollisions(t *testing.T) {
+	lib := mustLoad(t, LoadOptions{}, memPack("p", map[string]string{
+		"features/a.json": `{"id":"a","name":"A","origin":"feat","form":{"id":"rage","name":"Rage","no_cost":true},
+			"form_choices":[{"form":"rage","id":"animal","prompt":"p","kind":"pick","count":1,
+			 "options":[{"id":"x","name":"X","grants":{"languages":["elvish"]}}]}]}`,
+		"features/b.json": `{"id":"b","name":"B","origin":"feat",
+			"form_choices":[{"form":"rage","id":"animal","prompt":"p","kind":"pick","count":1,
+			 "options":[{"id":"y","name":"Y"}]}]}`,
+	}))
+	for _, want := range []string{"would be ignored", "already has a choice with this id"} {
+		if !hasIssue(lib, SevError, want) {
+			t.Errorf("expected an error containing %q, got %v", want, lib.Issues())
+		}
+	}
+}
+
+func TestValidationFormNoResource(t *testing.T) {
+	lib := mustLoad(t, LoadOptions{}, memPack("p", map[string]string{
+		"features/costly.json": `{"id":"costly","name":"Costly","origin":"feat","form":{"id":"a","name":"A"}}`,
+		"features/free.json":   `{"id":"free","name":"Free","origin":"feat","form":{"id":"b","name":"B","no_cost":true}}`,
+		"features/tiered.json": `{"id":"tiered","name":"Tiered","origin":"feat","form":{"id":"c","name":"C"},
+			"tiers":[{"min_level":1,"resource":{"name":"R","max":1,"recharge":"long_rest"}}]}`,
+	}))
+	if !hasIssue(lib, SevWarning, "form a has no resource") {
+		t.Errorf("expected a no-resource warning for form a, got %v", lib.Issues())
+	}
+	for _, is := range lib.Issues() {
+		if is.Severity == SevWarning && (strings.Contains(is.Message, "form b") || strings.Contains(is.Message, "form c")) {
+			t.Errorf("unexpected warning: %v", is)
+		}
+	}
+}
+
 func TestValidationFormOK(t *testing.T) {
 	lib := mustLoad(t, LoadOptions{}, memPack("p", map[string]string{
-		"features/a.json": `{"id":"a","name":"A","origin":"feat","form":{"id":"rage","name":"Rage"},
+		"features/a.json": `{"id":"a","name":"A","origin":"feat","form":{"id":"rage","name":"Rage","no_cost":true},
 			"modifiers":[{"target":"resist.fire","kind":"add","value":1,"form":"rage"}]}`,
 		"features/b.json": `{"id":"b","name":"B","origin":"feat",
 			"form_choices":[{"form":"rage","id":"animal","prompt":"p","kind":"pick","count":1,

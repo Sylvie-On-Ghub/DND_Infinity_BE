@@ -183,6 +183,22 @@ func TestOpenAPISchemasFollowTheTypes(t *testing.T) {
 		t.Errorf("SkillView.ability should be an enum of the six abilities: %v", ability)
 	}
 
+	// FormChoice embeds Choice, so its JSON is flat.
+	fc := schemas["FormChoice"].(map[string]any)["properties"].(map[string]any)
+	for _, f := range []string{"id", "options", "form"} {
+		if _, ok := fc[f]; !ok {
+			t.Errorf("FormChoice is missing %q: %v", f, fc)
+		}
+	}
+	if _, ok := fc["Choice"]; ok {
+		t.Error("FormChoice should flatten its embedded Choice")
+	}
+	for _, f := range []string{"Sheet.forms", "Character.active_forms", "Modifier.form", "Feature.form", "Feature.form_choices"} {
+		if fieldDocs[f] == "" {
+			t.Errorf("fieldDocs has no description for %s", f)
+		}
+	}
+
 	if _, ok := schemas["ErrorResponse"]; !ok {
 		t.Error("no ErrorResponse schema")
 	}

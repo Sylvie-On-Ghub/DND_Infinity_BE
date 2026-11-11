@@ -487,6 +487,7 @@ type validator struct {
 	skills  map[string]bool
 	petTags map[string]petTagUse // pet.<tag>.* targets seen, checked against creature tags at the end
 	forms   map[string]string    // declared form id -> id of the feature declaring it
+	formChs map[string]string    // form id + "/" + choice id -> id of the feature adding that form choice
 }
 
 type petTagUse struct{ kind, id string }
@@ -500,7 +501,7 @@ func (v *validator) warn(kind, id, format string, args ...any) {
 }
 
 func (l *ContentLibrary) validate() {
-	v := &validator{l: l, skills: map[string]bool{}, petTags: map[string]petTagUse{}, forms: map[string]string{}}
+	v := &validator{l: l, skills: map[string]bool{}, petTags: map[string]petTagUse{}, forms: map[string]string{}, formChs: map[string]string{}}
 	for _, s := range l.skills {
 		v.skills[s.ID] = true
 	}
@@ -870,6 +871,9 @@ func (v *validator) form(k string, f Feature) {
 	if f.Form != nil && (f.Form.ID == "" || f.Form.Name == "") {
 		v.err(k, f.ID, "form needs an id and a name")
 	}
+	if fm := f.Form; fm != nil && !fm.NoCost && !featureHasResource(f) {
+		v.warn(k, f.ID, "form %s has no resource; set no_cost if starting it is free", fm.ID)
+	}
 	var chs []Choice
 	for _, fc := range f.FormChoices {
 		chs = append(chs, fc.Choice)
@@ -883,8 +887,32 @@ func (v *validator) form(k string, f Feature) {
 		if len(fc.Options) == 0 || fc.Filter != nil {
 			v.err(k, f.ID, "%s: form choices need explicit options, not a filter", at)
 		}
+		for _, opt := range fc.Options {
+			if g := opt.Grants; len(g.Skills)+len(g.Tools)+len(g.Languages)+len(g.ArmourProfs)+len(g.WeaponProfs)+len(g.Saves)+len(g.FeatureIDs) > 0 {
+				v.err(k, f.ID, "%s option %q: form choice options can only have modifiers, so grants would be ignored", at, opt.ID)
+			}
+		}
+		key := fc.Form + "/" + fc.ID
+		if first, dup := v.formChs[key]; dup && fc.ID != "" {
+			v.err(k, f.ID, "%s: form %q already has a choice with this id, added by feature %q", at, fc.Form, first)
+		} else {
+			v.formChs[key] = f.ID
+		}
 	}
 	v.choices(k, f.ID, "form", chs)
+}
+
+// featureHasResource reports whether a feature has limited uses: its own, on a tier, or on its spells.
+func featureHasResource(f Feature) bool {
+	if f.Resource != nil || (f.Spells != nil && f.Spells.Resource != nil) {
+		return true
+	}
+	for _, t := range f.Tiers {
+		if t.Resource != nil || (t.Spells != nil && t.Spells.Resource != nil) {
+			return true
+		}
+	}
+	return false
 }
 
 func (v *validator) choices(kind, id, where string, chs []Choice) {

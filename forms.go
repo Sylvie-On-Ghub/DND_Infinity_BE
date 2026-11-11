@@ -50,7 +50,12 @@ func (g *gathered) form(id string) (formEntry, bool) {
 // active form's apply as they are, the rest become "while <form> is active" notes.
 func resolveForms(c Character, g *gathered, mods []Modifier) []Modifier {
 	active := map[string]bool{}
+	seen := map[string]bool{}
 	for _, af := range c.ActiveForms {
+		if seen[af.ID] { // a duplicate stored through PUT/PATCH: the first entry wins
+			continue
+		}
+		seen[af.ID] = true
 		e, ok := g.form(af.ID)
 		if !ok {
 			g.warnings = append(g.warnings, mkWarning(WarnFormUnavailable, "", "", "", af.ID,
@@ -118,7 +123,7 @@ func (g *gathered) formPickMods(e formEntry, af ActiveForm) []Modifier {
 				continue
 			}
 			for _, m := range opt.Modifiers {
-				m = withSource(m, ce.featureID)
+				m = withSource(m, ce.featureID+"/"+opt.ID) // per option, so two picks on one target don't dedupe
 				m.Form = e.def.ID
 				mods = append(mods, m)
 			}
@@ -146,6 +151,7 @@ func formViews(c Character, g *gathered, resources []ResourceView) []FormView {
 		for _, af := range c.ActiveForms {
 			if af.ID == e.def.ID {
 				v.Active, v.Picks = true, af.Picks
+				break // first entry wins, as in resolveForms
 			}
 		}
 		for _, ce := range g.formChoices {

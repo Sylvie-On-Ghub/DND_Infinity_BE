@@ -299,6 +299,11 @@ var typeDocs = map[string]string{
 }
 
 var fieldDocs = map[string]string{
+	"Sheet.forms":                    "Forms the character can switch on (Rage, Bladesong), each with whether it is active, the uses left and the picks offered when it is activated. Start and end them with POST /api/characters/{id}/forms.",
+	"Character.active_forms":         "Forms that are switched on, with the picks made at activation. Normally changed through POST /api/characters/{id}/forms rather than written directly. A long rest clears it.",
+	"Modifier.form":                  "In content: the form this modifier belongs to. It applies only while that form is active; otherwise it shows as a situational note, \"while <Name> is active\". Never on the sheet.",
+	"Feature.form":                   "A form this feature lets the character switch on. Its resource, if any, is spent when the form starts.",
+	"Feature.form_choices":           "Picks offered when a form is switched on, added to a form declared by this or another feature (Rage's Wild Heart animal).",
 	"Sheet.warnings":                 "Rules problems found in the character. The API never rejects these: show them, and let the user acknowledge ones that are intentional.",
 	"Sheet.pending_choices":          "Choices the character is entitled to but hasn't made. Drives level-up flows. Fill them in with the selections endpoint.",
 	"Sheet.notes":                    "Situational modifiers, advantage and disadvantage, and reminders that don't change a number.",
@@ -538,21 +543,7 @@ func (g *schemaGen) structSchema(t reflect.Type) map[string]any {
 	if _, done := g.components[name]; !done {
 		g.components[name] = map[string]any{} // placeholder, so recursive types terminate
 		props := map[string]any{}
-		for i := 0; i < t.NumField(); i++ {
-			f := t.Field(i)
-			if f.PkgPath != "" { // unexported
-				continue
-			}
-			jsonName, skip := jsonFieldName(f)
-			if skip {
-				continue
-			}
-			p := g.schema(f.Type)
-			if d, ok := fieldDocs[name+"."+jsonName]; ok {
-				p = withDescription(p, d)
-			}
-			props[jsonName] = p
-		}
+		g.addProps(t, props)
 		comp := map[string]any{"type": "object", "properties": props}
 		if d, ok := typeDocs[name]; ok {
 			comp["description"] = d
@@ -560,6 +551,31 @@ func (g *schemaGen) structSchema(t reflect.Type) map[string]any {
 		g.components[name] = comp
 	}
 	return schemaRef(name)
+}
+
+// addProps adds t's JSON properties to props. An embedded struct without a json name is flattened into
+// its parent, as encoding/json does.
+func (g *schemaGen) addProps(t reflect.Type, props map[string]any) {
+	name := schemaName(t)
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		if f.Anonymous && f.Type.Kind() == reflect.Struct && strings.Split(f.Tag.Get("json"), ",")[0] == "" {
+			g.addProps(f.Type, props)
+			continue
+		}
+		if f.PkgPath != "" { // unexported
+			continue
+		}
+		jsonName, skip := jsonFieldName(f)
+		if skip {
+			continue
+		}
+		p := g.schema(f.Type)
+		if d, ok := fieldDocs[name+"."+jsonName]; ok {
+			p = withDescription(p, d)
+		}
+		props[jsonName] = p
+	}
 }
 
 // ---------------------------------------------------------------------------
