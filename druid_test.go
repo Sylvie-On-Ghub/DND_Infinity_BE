@@ -415,3 +415,39 @@ func TestMoonAllLevels(t *testing.T) {
 		}
 	}
 }
+
+// A Barbarian 3 / Druid 2 elf raging in a wolf's shape: Rage's damage and resistances carry over, and the
+// walk speed is the wolf's, not the elf's (Fast Movement only comes at Barbarian 5).
+func TestDruidBarbarianRagingWolf(t *testing.T) {
+	lib := loadElfLib(t)
+	c := barbChar(3)
+	c.Abilities[Wis] = AbilityScore{Score: 14}
+	c.Classes = append(c.Classes, ClassLevel{ClassID: "druid", Level: 2})
+	c.Selections = []Selection{{FeatureID: "druid_wild_shape", ChoiceID: KnownFormsChoice, Picked: []string{"rat", "riding_horse", "spider", "wolf"}}}
+	wolf := ActiveForm{ID: "wild_shape", CreatureID: "wolf"}
+	rage := ActiveForm{ID: "rage", Picks: map[string][]string{"rage_of_the_wilds": {"bear"}}}
+
+	c.ActiveForms = []ActiveForm{wolf}
+	calm := mustCompute(t, c, lib, Ruleset{})
+	c.ActiveForms = []ActiveForm{rage, wolf}
+	sh := mustCompute(t, c, lib, Ruleset{})
+	noContentWarnings(t, sh)
+	if sh.Shape == nil || sh.Shape.CreatureID != "wolf" {
+		t.Fatalf("Shape = %+v, want the wolf", sh.Shape)
+	}
+
+	// The wolf's Bite is Str-based (mod.str to hit and damage), so Rage's +2 applies.
+	bite, ok := findAttack(sh, "Bite")
+	calmBite, _ := findAttack(calm, "Bite")
+	if !ok || bite.DamageBonus != 4 || calmBite.DamageBonus != 2 {
+		t.Errorf("Bite damage bonus = %d raging, %d not (found %v), want 4 and 2 (wolf Str 2, Rage 2)", bite.DamageBonus, calmBite.DamageBonus, ok)
+	}
+	for _, d := range []string{"bludgeoning", "piercing", "slashing"} {
+		if !slices.Contains(sh.Resistances, DamageType(d)) {
+			t.Errorf("resistances = %v, want %s", sh.Resistances, d)
+		}
+	}
+	if len(sh.Speeds) != 1 || sh.Speeds[SpeedWalk] != 40 {
+		t.Errorf("Speeds = %v, want the wolf's walk 40 only", sh.Speeds)
+	}
+}

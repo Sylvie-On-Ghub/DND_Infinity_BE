@@ -2708,7 +2708,7 @@
                 "$ref": "#/components/schemas/ShapeView"
               }
             ],
-            "description": "Present while a shape form (Wild Shape) is active: the creature the character has become. The sheet's AC, speeds, abilities and attacks are that creature's, with the character's own proficiency bonus, saves and skills where they are higher."
+            "description": "Present while a shape form (Wild Shape) is active: the creature the character has become. The sheet's AC, Strength, Dexterity and Constitution, speeds and attacks are that creature's; the character keeps their own Intelligence, Wisdom and Charisma, their speed bonuses other than their species', and their proficiency bonus, saves and skills where they are higher."
           },
           "short_rest_exhaustion": {
             "type": "integer"

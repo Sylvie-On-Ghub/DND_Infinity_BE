@@ -1216,6 +1216,9 @@ func ApplyForm(c *Character, sh Sheet, a FormAction) error {
 		if start.CreatureID == "" {
 			return badReq("form %q needs a creature_id", start.ID)
 		}
+		if len(view.KnownForms) == 0 {
+			return badReq("you have no Known Forms for %s; pick them first (choice %s)", view.Name, KnownFormsChoice)
+		}
 		n := slices.IndexFunc(view.KnownForms, func(o ShapeOption) bool { return o.ID == start.CreatureID })
 		if n < 0 {
 			return badReq("%q is not one of your Known Forms for %s", start.CreatureID, view.Name)

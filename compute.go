@@ -842,8 +842,9 @@ func onlyCaster(g *gathered, id string) bool {
 	return len(g.casters) > 0 && !slices.ContainsFunc(g.casters, func(e casterEntry) bool { return e.classID != id })
 }
 
-// resolveSpeedValues turns modifiers valued by a speed into plain numbers, with speeds read without them.
-func resolveSpeedValues(mods []Modifier) []Modifier {
+// resolveSpeedValues turns modifiers valued by a speed into plain numbers, with speeds read without them
+// from base (a shape's speeds; nil otherwise).
+func resolveSpeedValues(mods []Modifier, base map[SpeedType]int) []Modifier {
 	plain := slices.DeleteFunc(slices.Clone(mods), func(m Modifier) bool { return m.ValueSpeed != "" })
 	if len(plain) == len(mods) {
 		return mods
@@ -852,7 +853,7 @@ func resolveSpeedValues(mods []Modifier) []Modifier {
 	out := slices.Clone(mods)
 	for i, m := range out {
 		if m.ValueSpeed != "" {
-			out[i].Value = max(m.Value, k.apply(SpeedTarget(m.ValueSpeed), 0))
+			out[i].Value = max(m.Value, k.apply(SpeedTarget(m.ValueSpeed), base[m.ValueSpeed]))
 		}
 	}
 	return out
@@ -1188,7 +1189,14 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 		totalLevel += cl.Level
 	}
 	g := gather(c, lib, totalLevel)
-	mods := dedupe(resolveFormulaValues(c, g, resolveAbilityValues(c, activeMods(g, resolveForms(c, g, g.mods)))))
+	mods := resolveForms(c, g, g.mods)
+	// An active shape form (Wild Shape) substitutes the creature's stat block into the numbers below. It is
+	// found before requirements are checked, because worn armour and shields don't count while shaped.
+	shape, shapeWarns := g.resolveActiveShape(c, lib)
+	if shape != nil {
+		mods = shape.strip(g, mods)
+	}
+	mods = dedupe(resolveFormulaValues(c, g, resolveAbilityValues(c, activeMods(g, mods))))
 	// Modifiers aimed at pets are set aside: they never touch the owner, and pets read them later.
 	var petMods []Modifier
 	mods = slices.DeleteFunc(mods, func(m Modifier) bool {
@@ -1201,7 +1209,7 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 
 	// Inventory and carrying are worked out first: variant encumbrance comes back as ordinary modifiers.
 	invRes := computeInventory(c, lib, rules, newCalc(mods))
-	mods = dedupe(resolveSpeedValues(append(mods, invRes.mods...)))
+	mods = dedupe(resolveSpeedValues(append(mods, invRes.mods...), shape.speeds()))
 	k := newCalc(mods)
 
 	skillDefs := lib.Skills()
@@ -1213,8 +1221,6 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 	warnings := append([]Warning{}, g.warnings...)
 	warnings = append(warnings, invRes.warnings...)
 
-	// An active shape form (Wild Shape) substitutes the creature's stat block into the numbers below.
-	shape, shapeWarns := g.resolveActiveShape(c, lib)
 	warnings = append(warnings, shapeWarns...)
 
 	// Unknown modifier targets (typos in homebrew data), once per distinct target.
@@ -1347,14 +1353,10 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 	}
 
 	// Speeds: all from modifiers, so the race/feature must grant its base (e.g. speed.walk Add 30).
-	// While shaped they are the beast's exactly: the species base is itself a modifier.
+	// While shaped the beast's speeds are the base, and the species' speed modifiers are already gone.
 	speeds := map[SpeedType]int{}
 	for _, t := range allSpeeds {
-		v := k.apply(SpeedTarget(t), 0)
-		if shape != nil {
-			v = shape.creature.Speeds[t]
-		}
-		if v > 0 {
+		if v := k.apply(SpeedTarget(t), shape.speeds()[t]); v > 0 {
 			speeds[t] = v
 		}
 	}
@@ -1845,11 +1847,7 @@ func computeAC(c Character, g *gathered, lib Library, rules Ruleset, k *calc, mo
 	}
 
 	win := all[chosen]
-	ack := k
-	if shape != nil {
-		ack = shape.acCalc(g, k)
-	}
-	total := ack.apply(TargetAC, win.value)
+	total := k.apply(TargetAC, win.value)
 
 	options := make([]ACOption, 0, len(all))
 	for _, s := range all {

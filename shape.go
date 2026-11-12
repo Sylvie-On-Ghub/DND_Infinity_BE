@@ -162,8 +162,12 @@ func (g *gathered) resolveActiveShape(c Character, lib Library) (*activeShape, [
 				break // first entry wins, as in resolveForms
 			}
 		}
+		if af.CreatureID == "" {
+			return nil, []Warning{mkWarning(WarnShapeUnknownCreature, e.featureID, "", "", "",
+				fmt.Sprintf("%s is active with no creature_id, so the sheet isn't shaped", e.def.Name))}
+		}
 		cr, err := lib.Creature(af.CreatureID)
-		if af.CreatureID == "" || err != nil {
+		if err != nil {
 			return nil, []Warning{mkWarning(WarnShapeUnknownCreature, e.featureID, "", "", af.CreatureID,
 				fmt.Sprintf("%s is active as %q, which isn't in the library, so the sheet isn't changed", e.def.Name, af.CreatureID))}
 		}
@@ -249,9 +253,28 @@ func (s *activeShape) acCandidates(g *gathered) []ACFormula {
 	return out
 }
 
-// acCalc is k's ac modifiers without those of worn armour and shields, which don't count while shaped.
-func (s *activeShape) acCalc(g *gathered, k *calc) *calc {
-	return newCalc(slices.DeleteFunc(slices.Clone(k.byTarget[TargetAC]), func(m Modifier) bool { return g.wornSources[m.SourceID] }))
+// strip leaves out the modifiers that don't count while shaped: every one from worn armour and shields,
+// and the speeds of species features, which the beast's speeds replace. Armour and shields count as not
+// worn for requires, too.
+func (s *activeShape) strip(g *gathered, mods []Modifier) []Modifier {
+	g.armourWorn, g.heavyWorn, g.shieldWorn = false, false, false
+	species := map[string]bool{}
+	for _, v := range g.views {
+		if v.Source == OriginRace {
+			species[v.FeatureID] = true
+		}
+	}
+	return slices.DeleteFunc(slices.Clone(mods), func(m Modifier) bool {
+		return g.wornSources[m.SourceID] || species[m.SourceID] && strings.HasPrefix(m.Target, "speed.")
+	})
+}
+
+// speeds is the beast's speed of each type, the base the character's other speed modifiers add to.
+func (s *activeShape) speeds() map[SpeedType]int {
+	if s == nil {
+		return nil
+	}
+	return s.creature.Speeds
 }
 
 // senses merges the beast's senses into the character's, keeping the longer range of each, sorted by name.

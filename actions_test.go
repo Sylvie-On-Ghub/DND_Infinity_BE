@@ -1072,6 +1072,13 @@ func TestApplyFormShape(t *testing.T) {
 			})
 		}
 	})
+	t.Run("no known forms names the choice", func(t *testing.T) {
+		c := druidChar(4)
+		err := ApplyForm(&c, sheetFor(c), shapeStart("wolf", false))
+		if want := "you have no Known Forms for Wild Shape; pick them first (choice known_forms)"; !isBadRequest(err) || err.Error() != want {
+			t.Errorf("err = %v, want bad_request %q", err, want)
+		}
+	})
 	t.Run("no uses", func(t *testing.T) {
 		c := druidChar(4, known...)
 		c.ResourceUsed = map[string]int{"wild": 2}

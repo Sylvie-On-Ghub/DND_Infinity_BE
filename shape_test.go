@@ -362,3 +362,64 @@ func TestShapeIgnoresACOverride(t *testing.T) {
 		}
 	}
 }
+
+func TestShapeArmourModsIgnored(t *testing.T) {
+	lib := shapeLib()
+	lib.items = map[string]Item{"half": {ID: "half", Name: "Half Plate", Kind: ItemArmour,
+		ACFormula: &ACFormula{ID: "half", Name: "Half Plate", Formula: Formula{Base: 15}},
+		Modifiers: []Modifier{{Target: SkillTarget("stealth"), Kind: ModDisadvantage}}}}
+	c := druidChar(4, "wolf")
+	c.Inventory = []InventoryItem{{ItemID: "half", Quantity: 1, Equipped: true}}
+	c.Modifiers = []Modifier{{Target: TargetAC, Kind: ModAdd, Value: 1, Requires: RequiresArmour, SourceID: "defense"}}
+	sh := mustCompute(t, c, lib, Ruleset{})
+	if !sh.Skills["stealth"].Disadvantage || sh.AC != 16 {
+		t.Errorf("unshaped: Stealth disadvantage %v AC %d, want true 16 (15 + Defense 1)", sh.Skills["stealth"].Disadvantage, sh.AC)
+	}
+	c.ActiveForms = []ActiveForm{{ID: "wild_shape", CreatureID: "wolf"}}
+	sh = mustCompute(t, c, lib, Ruleset{})
+	if sh.Skills["stealth"].Disadvantage {
+		t.Error("shaped: Stealth disadvantage from worn armour should be gone")
+	}
+	if sh.AC != 12 {
+		t.Errorf("shaped AC = %d, want 12: Defense needs armour, which isn't worn while shaped", sh.AC)
+	}
+}
+
+func TestShapeSpeedMods(t *testing.T) {
+	lib := shapeLib()
+	lib.features["elf"] = Feature{ID: "elf", Name: "Elf", Tags: []string{"race"},
+		Modifiers: []Modifier{{Target: SpeedTarget(SpeedWalk), Kind: ModAdd, Value: 30}}}
+	lib.features["fast"] = Feature{ID: "fast", Name: "Fast",
+		Modifiers: []Modifier{{Target: SpeedTarget(SpeedWalk), Kind: ModAdd, Value: 10}}}
+	c := druidChar(4, "wolf")
+	c.RaceID = "elf"
+	if sh := mustCompute(t, c, lib, Ruleset{}); sh.Speeds[SpeedWalk] != 30 {
+		t.Errorf("unshaped walk = %d, want 30", sh.Speeds[SpeedWalk])
+	}
+	c.ActiveForms = []ActiveForm{{ID: "wild_shape", CreatureID: "wolf"}}
+	if sh := mustCompute(t, c, lib, Ruleset{}); sh.Speeds[SpeedWalk] != 40 {
+		t.Errorf("shaped walk = %d, want 40: the species speed doesn't count", sh.Speeds[SpeedWalk])
+	}
+
+	levels := slices.Clone(lib.classes["druid"].Levels)
+	levels[1] = []string{"wild", "fast"}
+	druid := lib.classes["druid"]
+	druid.Levels = levels
+	lib.classes["druid"] = druid
+	if sh := mustCompute(t, c, lib, Ruleset{}); sh.Speeds[SpeedWalk] != 50 {
+		t.Errorf("shaped walk with a class bonus = %d, want 50 (40 + 10)", sh.Speeds[SpeedWalk])
+	}
+}
+
+func TestShapeNoCreatureWarning(t *testing.T) {
+	sh := shaped(t, druidChar(4, "wolf"), "", nil)
+	for _, w := range sh.Warnings {
+		if w.Code == WarnShapeUnknownCreature {
+			if w.Message != "Wild Shape is active with no creature_id, so the sheet isn't shaped" {
+				t.Errorf("message = %q", w.Message)
+			}
+			return
+		}
+	}
+	t.Errorf("no %s warning in %+v", WarnShapeUnknownCreature, sh.Warnings)
+}
