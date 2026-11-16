@@ -477,7 +477,7 @@ func TestAPIChoiceOptions(t *testing.T) {
 	wantStatus(t, rec, http.StatusOK)
 	into(t, rec, &opts)
 	// Fighting Style feats aren't general feats: they're only offered through a Fighting Style feature.
-	wantFeats := []string{"ability_score_improvement", "alert", "dual_wielder", "healer", "lucky", "musician", "sentinel", "skilled", "tough", "watchful"}
+	wantFeats := []string{"ability_score_improvement", "alert", "crossbow_expert", "dual_wielder", "healer", "lucky", "musician", "sentinel", "skilled", "tough", "watchful"}
 	if len(opts) != len(wantFeats) {
 		t.Fatalf("feat options = %+v, want %v", opts, wantFeats)
 	}
