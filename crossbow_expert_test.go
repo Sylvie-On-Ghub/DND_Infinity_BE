@@ -68,3 +68,34 @@ func TestCrossbowExpert(t *testing.T) {
 		t.Errorf("%d Crossbow Expert notes, want 3: %+v", notes, sh.Notes)
 	}
 }
+
+func TestCrossbowExpertLegacy(t *testing.T) {
+	lib := loadElfLib(t)
+	c := fighterAt(4, Selection{FeatureID: "fighter_asi_4", ChoiceID: "feat", Picked: []string{"crossbow_expert_legacy"}})
+	sh := mustCompute(t, c, lib, Ruleset{})
+	noContentWarnings(t, sh)
+	if sh.Abilities[Dex].Score != 14 {
+		t.Errorf("Dex %d, want 14: the legacy feat has no ability increase", sh.Abilities[Dex].Score)
+	}
+	if a, ok := actionNamed(sh, "Crossbow Expert: Hand Crossbow Attack"); !ok || a.Type != ActionBonusAction {
+		t.Errorf("hand crossbow attack = %+v (found %v)", a, ok)
+	}
+	notes := 0
+	for _, n := range sh.Notes {
+		if strings.HasPrefix(n.Note, "Crossbow Expert (Legacy):") {
+			notes++
+		}
+	}
+	if notes != 2 {
+		t.Errorf("%d legacy Crossbow Expert notes, want 2: %+v", notes, sh.Notes)
+	}
+
+	// No prerequisites: a level 1 fighter could take it.
+	opts, err := ChoiceOptions(fighterAt(1), lib, Ruleset{}, "fighter_asi_4", "feat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i := slices.IndexFunc(opts, func(o EligibleOption) bool { return o.OptionID == "crossbow_expert_legacy" }); i < 0 || !opts[i].Eligible {
+		t.Errorf("legacy crossbow expert should always be eligible: %+v", opts)
+	}
+}
