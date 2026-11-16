@@ -130,23 +130,25 @@ func withSource(m Modifier, defaultSource string) Modifier {
 // ---------------------------------------------------------------------------
 
 type gathered struct {
-	mods      []Modifier
-	features  []Feature // every feature that resolved, for prerequisite checks
-	skills    map[string]ProficiencyLevel
-	tools     map[string]ProficiencyLevel
-	languages []string
-	armour    []string
-	weapons   []string
-	actions   []Action
-	views     []FeatureView     // every feature that resolved, for Sheet.Features
-	resOf     map[string]string // feature id -> its resource's id in Sheet.Resources
-	pending   []PendingChoice
-	warnings  []Warning
+	mods        []Modifier
+	activeForms map[string]bool // form ids switched on, set by resolveForms
+	features    []Feature       // every feature that resolved, for prerequisite checks
+	skills      map[string]ProficiencyLevel
+	tools       map[string]ProficiencyLevel
+	languages   []string
+	armour      []string
+	weapons     []string
+	actions     []Action
+	views       []FeatureView     // every feature that resolved, for Sheet.Features
+	resOf       map[string]string // feature id -> its resource's id in Sheet.Resources
+	pending     []PendingChoice
+	warnings    []Warning
 
-	acFormulas []ACFormula // from features and worn armour
-	armourWorn bool
-	heavyWorn  bool
-	shieldWorn bool
+	acFormulas  []ACFormula // from features and worn armour
+	armourWorn  bool
+	heavyWorn   bool
+	shieldWorn  bool
+	wornSources map[string]bool // source ids of worn armour and shield modifiers, which don't count while shaped
 
 	weaponItems []weaponEntry
 
@@ -156,6 +158,8 @@ type gathered struct {
 	casters     []casterEntry
 	resources   []resourceEntry
 	spellGrants []spellGrantEntry
+	forms       []formEntry
+	formChoices []formChoiceEntry
 
 	lib Library // for checking picks from spell pools
 }
@@ -503,13 +507,20 @@ func (g *gathered) applyFeature(c Character, f Feature, level int) []string {
 		}
 	}
 	g.addActions(f.ID, g.resOf[f.ID], acts)
+	g.addForms(f)
 
 	// Choices. Choices sharing a Group are alternatives: if any one is complete, the unfinished
 	// others stop showing as pending; filling in more than one warns.
 	start := len(g.pending)
 	groupOf := map[string]string{}
 	satisfied := map[string]int{}
-	for _, ch := range f.Choices {
+	choices := f.Choices
+	if f.Form != nil && f.Form.Shape != nil { // a shape form's Known Forms choice is synthesised from its limits
+		if ch, ok := knownFormsChoice(*f.Form.Shape, g.classLevels[f.Form.Shape.ClassID]); ok {
+			choices = append(slices.Clone(choices), ch)
+		}
+	}
+	for _, ch := range choices {
 		before := len(g.pending)
 		sel, ok := findSelection(c.Selections, f.ID, ch.ID)
 		if !ok {
@@ -609,6 +620,12 @@ func (g *gathered) applyChoice(f Feature, ch Choice, sel Selection) []string {
 					continue // nothing to apply: the option's data doesn't exist
 				}
 				next = append(next, g.applyOption(f, opt, 1, f.ID+":"+ch.ID)...)
+
+			case ch.Filter != nil && ch.Filter.Type == "creature":
+				if cr, err := g.lib.Creature(id); err != nil || !slices.Contains(cr.Tags, ch.Filter.Tag) {
+					g.warnings = append(g.warnings, mkWarning(WarnNotInPool, f.ID, ch.ID, "", id,
+						fmt.Sprintf("%q is not a creature with the %q tag, so it isn't an option for %q", id, ch.Filter.Tag, ch.Prompt)))
+				}
 
 			case ch.Filter != nil:
 				// Permissive: out-of-pool picks are warned about but still applied.
@@ -778,10 +795,32 @@ func baseFeatureID(id string) string {
 
 // activeMods leaves out modifiers whose armour requirement isn't met. Weapon requirements are checked
 // attack by attack, and anything else isn't a requirement the engine knows, so it warns and doesn't apply.
-func activeMods(g *gathered) []Modifier {
-	return slices.DeleteFunc(slices.Clone(g.mods), func(m Modifier) bool {
+// An only_caster modifier whose class isn't the character's only spellcasting class is kept as a note,
+// with "with <Class> spells" put in front of its condition.
+func activeMods(g *gathered, mods []Modifier) []Modifier {
+	mods = slices.Clone(mods)
+	for i, m := range mods {
+		id, ok := strings.CutPrefix(m.Requires, RequiresOnlyCasterPrefix)
+		if !ok {
+			continue
+		}
+		mods[i].Requires = ""
+		if onlyCaster(g, id) {
+			continue
+		}
+		name := id
+		if j := slices.IndexFunc(g.casters, func(e casterEntry) bool { return e.classID == id }); j >= 0 && g.casters[j].name != "" {
+			name = g.casters[j].name
+		}
+		cond := "with " + name + " spells"
+		if m.Condition != "" {
+			cond += ", " + m.Condition
+		}
+		mods[i].Condition = cond
+	}
+	return slices.DeleteFunc(mods, func(m Modifier) bool {
 		switch m.Requires {
-		case "", RequiresOneWeapon, RequiresThrown, RequiresMeleeWeapon, RequiresWeapon:
+		case "", RequiresOneWeapon, RequiresThrown, RequiresMeleeWeapon, RequiresWeapon, RequiresStrengthAttack:
 			return false
 		case RequiresArmour:
 			return !g.armourWorn
@@ -798,8 +837,14 @@ func activeMods(g *gathered) []Modifier {
 	})
 }
 
-// resolveSpeedValues turns modifiers valued by a speed into plain numbers, with speeds read without them.
-func resolveSpeedValues(mods []Modifier) []Modifier {
+// onlyCaster reports whether class id is the character's only spellcasting class.
+func onlyCaster(g *gathered, id string) bool {
+	return len(g.casters) > 0 && !slices.ContainsFunc(g.casters, func(e casterEntry) bool { return e.classID != id })
+}
+
+// resolveSpeedValues turns modifiers valued by a speed into plain numbers, with speeds read without them
+// from base (a shape's speeds; nil otherwise).
+func resolveSpeedValues(mods []Modifier, base map[SpeedType]int) []Modifier {
 	plain := slices.DeleteFunc(slices.Clone(mods), func(m Modifier) bool { return m.ValueSpeed != "" })
 	if len(plain) == len(mods) {
 		return mods
@@ -808,7 +853,7 @@ func resolveSpeedValues(mods []Modifier) []Modifier {
 	out := slices.Clone(mods)
 	for i, m := range out {
 		if m.ValueSpeed != "" {
-			out[i].Value = max(m.Value, k.apply(SpeedTarget(m.ValueSpeed), 0))
+			out[i].Value = max(m.Value, k.apply(SpeedTarget(m.ValueSpeed), base[m.ValueSpeed]))
 		}
 	}
 	return out
@@ -836,6 +881,48 @@ func resolveAbilityValues(c Character, mods []Modifier) []Modifier {
 				score = st.Score
 			}
 			m.Value = max(m.Value, floorMod(k.apply(AbilityTarget(m.ValueAbility), score)))
+		}
+		out[i] = m
+	}
+	return out
+}
+
+// resolveFormulaValues turns modifiers valued by a formula into plain numbers. Terms read the
+// character's ability modifiers with formula-valued modifiers left out, which rules out loops.
+func resolveFormulaValues(c Character, g *gathered, mods []Modifier) []Modifier {
+	plain := make([]Modifier, 0, len(mods))
+	for _, m := range mods {
+		if m.ValueFormula == nil {
+			plain = append(plain, m)
+		}
+	}
+	if len(plain) == len(mods) {
+		return mods
+	}
+	k := newCalc(plain)
+	modOf := map[Ability]int{}
+	for _, a := range allAbilities {
+		score := 10 // missing ability defaults to 10 rather than 0
+		if st, ok := c.Abilities[a]; ok {
+			score = st.Score
+		}
+		modOf[a] = floorMod(k.apply(AbilityTarget(a), score))
+	}
+	level := 0
+	for _, cl := range c.Classes {
+		level += cl.Level
+	}
+	level = max(level, 1)
+	ctx := formulaCtx{modOf: modOf, pb: 2 + (level-1)/4, level: level, classLevels: g.classLevels}
+	out := make([]Modifier, len(mods))
+	for i, m := range mods {
+		if m.ValueFormula != nil {
+			v, bad := evalFormula(*m.ValueFormula, ctx)
+			for _, src := range bad {
+				g.warnings = append(g.warnings, mkWarning(WarnUnknownTerm, m.SourceID, "", m.Target, src,
+					fmt.Sprintf("value formula on %q has an unknown term %q (counted as 0)", m.Target, src)))
+			}
+			m.Value = max(m.Value, v)
 		}
 		out[i] = m
 	}
@@ -882,6 +969,7 @@ var fixedTargets = map[string]bool{
 	TargetCarryCapacity: true, TargetJackOfAllTrades: true, TargetAttunementMax: true,
 	TargetDamageAll: true, TargetDamageMelee: true, TargetDamageRanged: true, TargetDamageSpell: true,
 	TargetShortRestExhaustion: true,
+	TargetShapeMaxCR:          true, TargetShapeTempHP: true, TargetShapeCastSpells: true,
 }
 
 func isAbility(s string) bool {
@@ -981,7 +1069,7 @@ func newCalc(mods []Modifier) *calc {
 }
 
 func weaponRequirement(r string) bool {
-	return r == RequiresOneWeapon || r == RequiresThrown || r == RequiresMeleeWeapon || r == RequiresWeapon
+	return r == RequiresOneWeapon || r == RequiresThrown || r == RequiresMeleeWeapon || r == RequiresWeapon || r == RequiresStrengthAttack
 }
 
 // weaponRiders lists the weapon-only dice riders on these targets that an attack meeting qualifies gets.
@@ -1101,7 +1189,14 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 		totalLevel += cl.Level
 	}
 	g := gather(c, lib, totalLevel)
-	mods := dedupe(resolveAbilityValues(c, activeMods(g)))
+	mods := resolveForms(c, g, g.mods)
+	// An active shape form (Wild Shape) substitutes the creature's stat block into the numbers below. It is
+	// found before requirements are checked, because worn armour and shields don't count while shaped.
+	shape, shapeWarns := g.resolveActiveShape(c, lib)
+	if shape != nil {
+		mods = shape.strip(g, mods)
+	}
+	mods = dedupe(resolveFormulaValues(c, g, resolveAbilityValues(c, activeMods(g, mods))))
 	// Modifiers aimed at pets are set aside: they never touch the owner, and pets read them later.
 	var petMods []Modifier
 	mods = slices.DeleteFunc(mods, func(m Modifier) bool {
@@ -1114,7 +1209,7 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 
 	// Inventory and carrying are worked out first: variant encumbrance comes back as ordinary modifiers.
 	invRes := computeInventory(c, lib, rules, newCalc(mods))
-	mods = dedupe(resolveSpeedValues(append(mods, invRes.mods...)))
+	mods = dedupe(resolveSpeedValues(append(mods, invRes.mods...), shape.speeds()))
 	k := newCalc(mods)
 
 	skillDefs := lib.Skills()
@@ -1125,6 +1220,8 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 
 	warnings := append([]Warning{}, g.warnings...)
 	warnings = append(warnings, invRes.warnings...)
+
+	warnings = append(warnings, shapeWarns...)
 
 	// Unknown modifier targets (typos in homebrew data), once per distinct target.
 	seenTarget := map[string]bool{}
@@ -1168,9 +1265,11 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 
 	jack := k.flag(ModSet, TargetJackOfAllTrades)
 
-	// Abilities, saves.
+	// Abilities, saves. While shaped, Str, Dex and Con are the beast's scores exactly; ownMod keeps the
+	// character's own modifiers for HP, resources and spellcasting.
 	abilities := map[Ability]AbilityView{}
 	modOf := map[Ability]int{}
+	ownMod := map[Ability]int{}
 	scoreOf := map[Ability]int{}
 	for _, a := range allAbilities {
 		score, saveProf := 10, false // missing ability defaults to 10 rather than 0
@@ -1181,13 +1280,18 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 			saveProf = true // from class or a feature; the stored flag stays as a manual extra
 		}
 		score = k.apply(AbilityTarget(a), score)
+		ownMod[a], scoreOf[a] = floorMod(score), score
+		if shape.replaces(a) {
+			score = shape.score(a)
+		}
 		mod := floorMod(score)
-		save := mod + k.sum(SaveTarget(a), TargetSaveAll)
+		save := mod
 		if saveProf {
 			save += pb
 		}
+		save = shape.saveBase(a, save) + k.sum(SaveTarget(a), TargetSaveAll)
 		abilities[a] = AbilityView{Score: score, Mod: mod, SaveBonus: save, SaveProf: saveProf}
-		modOf[a], scoreOf[a] = mod, score
+		modOf[a] = mod
 	}
 
 	// Skills and passives.
@@ -1203,7 +1307,8 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 			lvl = ProfHalf
 		}
 		targets := []string{SkillTarget(sd.ID), CheckTarget(ab), TargetCheckAll}
-		bonus := modOf[ab] + profPart(lvl, pb) + k.sum(targets...)
+		bonus, lvl := shape.skillBase(sd, modOf[ab]+profPart(lvl, pb), lvl)
+		bonus += k.sum(targets...)
 
 		adv := k.flag(ModAdvantage, targets...)
 		dis := k.flag(ModDisadvantage, targets...)
@@ -1238,8 +1343,8 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 	}
 
 	// HP, AC, initiative.
-	maxHP := k.apply(TargetMaxHP, rolled+level*modOf[Con])
-	acDetail, acWarnings := computeAC(c, g, lib, rules, k, modOf, pb, level)
+	maxHP := k.apply(TargetMaxHP, rolled+level*ownMod[Con])
+	acDetail, acWarnings := computeAC(c, g, lib, rules, k, modOf, pb, level, shape)
 	warnings = append(warnings, acWarnings...)
 	ac := acDetail.Total
 	init := k.apply(TargetInitiative, modOf[Dex])
@@ -1248,9 +1353,10 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 	}
 
 	// Speeds: all from modifiers, so the race/feature must grant its base (e.g. speed.walk Add 30).
+	// While shaped the beast's speeds are the base, and the species' speed modifiers are already gone.
 	speeds := map[SpeedType]int{}
 	for _, t := range allSpeeds {
-		if v := k.apply(SpeedTarget(t), 0); v > 0 {
+		if v := k.apply(SpeedTarget(t), shape.speeds()[t]); v > 0 {
 			speeds[t] = v
 		}
 	}
@@ -1265,6 +1371,13 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 			senses = append(senses, Sense{Name: strings.TrimPrefix(t, "sense."), Range: v})
 		}
 	}
+	resistances, immunities, actions := k.damageList("resist."), k.damageList("immune."), g.actions
+	if shape != nil {
+		senses = shape.senses(senses)
+		resistances = mergeDamageTypes(resistances, shape.creature.Resistances)
+		immunities = mergeDamageTypes(immunities, shape.creature.Immunities)
+		actions = append(slices.Clone(actions), shape.creature.Actions...)
+	}
 
 	// Notes: nothing is silently dropped. Notes, conditional modifiers, and every advantage or
 	// disadvantage appear here (skills also show the net flag on their own row).
@@ -1278,14 +1391,14 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 		}
 	}
 
-	attacks := computeAttacks(g, rules, k, modOf, pb)
+	attacks := computeAttacks(g, rules, k, modOf, pb, shape)
 	casterLevel := computeCasterLevel(g)
 
 	resources := []ResourceView{}
 	for _, re := range g.resources {
 		used := c.ResourceUsed[re.featureID]
-		if re.res.MaxAbility != "" && modOf[re.res.MaxAbility]+re.res.MaxBonus > re.res.Max {
-			re.res.Max = modOf[re.res.MaxAbility] + re.res.MaxBonus
+		if re.res.MaxAbility != "" && ownMod[re.res.MaxAbility]+re.res.MaxBonus > re.res.Max {
+			re.res.Max = ownMod[re.res.MaxAbility] + re.res.MaxBonus
 		}
 		remaining := re.res.Max - used
 		if remaining < 0 {
@@ -1299,7 +1412,7 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 		})
 	}
 
-	spellSources, spellSlots, pactSlots, spellWarns := computeSpells(c, g, lib, rules, k, modOf, pb, totalLevel)
+	spellSources, spellSlots, pactSlots, spellWarns := computeSpells(c, g, lib, rules, k, ownMod, pb, totalLevel)
 	warnings = append(warnings, spellWarns...)
 
 	// Prerequisites (permissive: warn only).
@@ -1398,11 +1511,11 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 		Tools:            tools,
 		Speeds:           speeds,
 		Senses:           senses,
-		Resistances:      k.damageList("resist."),
-		Immunities:       k.damageList("immune."),
+		Resistances:      resistances,
+		Immunities:       immunities,
 		Vulnerabilities:  k.damageList("vuln."),
 		Features:         features,
-		Actions:          g.actions,
+		Actions:          actions,
 		Notes:            notes,
 		PendingChoices:   pending,
 		Warnings:         finalWarnings,
@@ -1419,6 +1532,8 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 		PactSlots:        pactSlots,
 		ArmourProfs:      g.armour,
 		WeaponProfs:      g.weapons,
+		Forms:            formViews(c, g, resources),
+		Shape:            shape.view(k),
 
 		ShortRestExhaustion: k.sum(TargetShortRestExhaustion),
 	}
@@ -1491,7 +1606,14 @@ func (g *gathered) applyInventory(c Character, lib Library) {
 			continue
 		}
 		for _, m := range it.Modifiers {
-			g.mods = append(g.mods, withSource(m, it.ID)) // item id as source: two copies don't stack
+			m = withSource(m, it.ID) // item id as source: two copies don't stack
+			if it.Kind == ItemArmour || it.Kind == ItemShield {
+				if g.wornSources == nil {
+					g.wornSources = map[string]bool{}
+				}
+				g.wornSources[m.SourceID] = true
+			}
+			g.mods = append(g.mods, m)
 		}
 		g.actions = append(g.actions, it.Actions...)
 		if it.Spells != nil {
@@ -1624,7 +1746,10 @@ func spellACFormulas(c Character, g *gathered, lib Library) []ACFormula {
 // if nothing is eligible, the baseline with a warning. Spell formulas (Mage Armor) are only
 // available while the spell is castable, and only used through the override: the sheet can't
 // know whether the spell is currently active.
-func computeAC(c Character, g *gathered, lib Library, rules Ruleset, k *calc, modOf map[Ability]int, pb, level int) (ACBreakdown, []Warning) {
+//
+// While shaped, the candidates are the beast's AC and formulas tied to an active form, competing on value
+// (the override is ignored); armour and shields, and their ac modifiers, don't count.
+func computeAC(c Character, g *gathered, lib Library, rules Ruleset, k *calc, modOf map[Ability]int, pb, level int, shape *activeShape) (ACBreakdown, []Warning) {
 	var warns []Warning
 
 	base := defaultBaseAC
@@ -1636,21 +1761,25 @@ func computeAC(c Character, g *gathered, lib Library, rules Ruleset, k *calc, mo
 	// so results are deterministic.
 	candidates := []ACFormula{base}
 	seen := map[string]bool{base.ID: true}
-	for _, f := range g.acFormulas {
-		if seen[f.ID] {
-			continue
-		}
-		seen[f.ID] = true
-		candidates = append(candidates, f)
-	}
 	fromSpell := map[string]bool{}
-	for _, f := range spellACFormulas(c, g, lib) {
-		if seen[f.ID] {
-			continue
+	if shape != nil {
+		candidates = shape.acCandidates(g)
+	} else {
+		for _, f := range g.acFormulas {
+			if seen[f.ID] {
+				continue
+			}
+			seen[f.ID] = true
+			candidates = append(candidates, f)
 		}
-		seen[f.ID] = true
-		fromSpell[f.ID] = true
-		candidates = append(candidates, f)
+		for _, f := range spellACFormulas(c, g, lib) {
+			if seen[f.ID] {
+				continue
+			}
+			seen[f.ID] = true
+			fromSpell[f.ID] = true
+			candidates = append(candidates, f)
+		}
 	}
 	sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].ID < candidates[j].ID })
 
@@ -1669,16 +1798,22 @@ func computeAC(c Character, g *gathered, lib Library, rules Ruleset, k *calc, mo
 		}
 		s := scored{f: f, value: v, eligible: true}
 		switch {
-		case f.NoArmour && g.armourWorn:
+		case f.Form != "" && !g.activeForms[f.Form]:
+			name := f.Form
+			if e, ok := g.form(f.Form); ok {
+				name = e.def.Name
+			}
+			s.eligible, s.reason = false, "only while "+name+" is active"
+		case f.NoArmour && g.armourWorn && shape == nil:
 			s.eligible, s.reason = false, "requires no armour"
-		case f.NoShield && g.shieldWorn:
+		case f.NoShield && g.shieldWorn && shape == nil:
 			s.eligible, s.reason = false, "requires no shield"
 		}
 		all = append(all, s)
 	}
 
 	chosen, overridden := -1, false
-	if c.ACFormulaOverride != "" {
+	if c.ACFormulaOverride != "" && shape == nil {
 		for i, s := range all {
 			if s.f.ID == c.ACFormulaOverride {
 				chosen, overridden = i, true
@@ -1823,6 +1958,9 @@ func buildAttack(sp attackSpec, k *calc, modOf map[Ability]int, pb int) AttackVi
 	dmgTargets := []string{TargetDamageAll, dmgTarget}
 
 	ab := attackAbility(sp.d, sp.abilityOverride, modOf)
+	if ab == Str {
+		sp.qualifies = append(slices.Clone(sp.qualifies), RequiresStrengthAttack)
+	}
 
 	toHit := modOf[ab] + sp.magic + k.sum(atkTargets...) + k.weaponSum(sp.qualifies, atkTargets...)
 	if sp.proficient {
@@ -1854,8 +1992,16 @@ func buildAttack(sp attackSpec, k *calc, modOf map[Ability]int, pb int) AttackVi
 }
 
 // computeAttacks builds attack entries for equipped weapons, then feature-granted attack actions,
-// then unarmed strike (always available).
-func computeAttacks(g *gathered, rules Ruleset, k *calc, modOf map[Ability]int, pb int) []AttackView {
+// then unarmed strike (always available). While shaped, the beast's attacks replace weapons and
+// unarmed strike.
+func computeAttacks(g *gathered, rules Ruleset, k *calc, modOf map[Ability]int, pb int, shape *activeShape) []AttackView {
+	if shape != nil {
+		out := featureAttacks(g, k, modOf, pb)
+		for _, a := range shape.creature.Attacks {
+			out = append(out, beastAttack(a, shape, k))
+		}
+		return out
+	}
 	out := []AttackView{}
 
 	weaponsHeld := 0
@@ -1905,12 +2051,7 @@ func computeAttacks(g *gathered, rules Ruleset, k *calc, modOf map[Ability]int, 
 		}
 	}
 
-	for _, a := range g.actions {
-		if a.IsAttack && a.Attack != nil {
-			// Feature-granted attacks (natural weapons, class features) are treated as proficient.
-			out = append(out, buildAttack(attackSpec{name: a.Name, d: *a.Attack, proficient: true}, k, modOf, pb))
-		}
-	}
+	out = append(out, featureAttacks(g, k, modOf, pb)...)
 
 	unarmed := defaultUnarmed
 	if rules.Unarmed != nil {
@@ -1921,6 +2062,18 @@ func computeAttacks(g *gathered, rules Ruleset, k *calc, modOf map[Ability]int, 
 		magic: unarmed.MagicBonus, proficient: true,
 	}, k, modOf, pb))
 
+	return out
+}
+
+// featureAttacks builds the attack actions features grant (natural weapons, class features). They are
+// treated as proficient.
+func featureAttacks(g *gathered, k *calc, modOf map[Ability]int, pb int) []AttackView {
+	out := []AttackView{}
+	for _, a := range g.actions {
+		if a.IsAttack && a.Attack != nil {
+			out = append(out, buildAttack(attackSpec{name: a.Name, d: *a.Attack, proficient: true}, k, modOf, pb))
+		}
+	}
 	return out
 }
 

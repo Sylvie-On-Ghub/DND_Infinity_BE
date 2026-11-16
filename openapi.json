@@ -32,6 +32,10 @@
       },
       "ACFormula": {
         "properties": {
+          "form": {
+            "description": "The form this AC formula belongs to. It is offered only while that form is active (Circle Forms during Wild Shape).",
+            "type": "string"
+          },
           "formula": {
             "$ref": "#/components/schemas/Formula"
           },
@@ -182,6 +186,27 @@
           },
           "sheet": {
             "$ref": "#/components/schemas/Sheet"
+          }
+        },
+        "type": "object"
+      },
+      "ActiveForm": {
+        "properties": {
+          "creature_id": {
+            "description": "Shape forms only: the creature the character has become. Set by starting the form with a creature_id.",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "picks": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object"
           }
         },
         "type": "object"
@@ -396,6 +421,13 @@
             "description": "Warnings the user has marked as intentional, matched by key.",
             "items": {
               "$ref": "#/components/schemas/Acknowledgement"
+            },
+            "type": "array"
+          },
+          "active_forms": {
+            "description": "Forms that are switched on, with the picks made at activation. Normally changed through POST /api/characters/{id}/forms rather than written directly. A long rest clears it.",
+            "items": {
+              "$ref": "#/components/schemas/ActiveForm"
             },
             "type": "array"
           },
@@ -1077,6 +1109,21 @@
           "description": {
             "type": "string"
           },
+          "form": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FormDef"
+              }
+            ],
+            "description": "A form this feature lets the character switch on. Its resource, if any, is spent when the form starts."
+          },
+          "form_choices": {
+            "description": "Picks offered when a form is switched on, added to a form declared by this or another feature (Rage's Wild Heart animal).",
+            "items": {
+              "$ref": "#/components/schemas/FormChoice"
+            },
+            "type": "array"
+          },
           "grants": {
             "$ref": "#/components/schemas/Grants"
           },
@@ -1184,6 +1231,166 @@
           "source_id": {
             "description": "The class, race or background it belongs to. A feat with no source of its own gives its own id.",
             "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "FormAction": {
+        "properties": {
+          "end": {
+            "type": "string"
+          },
+          "start": {
+            "$ref": "#/components/schemas/FormStart"
+          }
+        },
+        "type": "object"
+      },
+      "FormChoice": {
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "filter": {
+            "$ref": "#/components/schemas/PoolFilter"
+          },
+          "form": {
+            "type": "string"
+          },
+          "grant_level": {
+            "enum": [
+              "none",
+              "half",
+              "trained",
+              "expert"
+            ],
+            "type": "string"
+          },
+          "group": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "pick",
+              "allocate"
+            ],
+            "type": "string"
+          },
+          "max_per_option": {
+            "type": "integer"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/Option"
+            },
+            "type": "array"
+          },
+          "points": {
+            "type": "integer"
+          },
+          "prompt": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "FormDef": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "no_cost": {
+            "type": "boolean"
+          },
+          "shape": {
+            "$ref": "#/components/schemas/ShapeDef"
+          }
+        },
+        "type": "object"
+      },
+      "FormStart": {
+        "properties": {
+          "creature_id": {
+            "description": "Shape forms (Wild Shape): the Known Form to become, from the form's known_forms. Required for a shape form and refused on any other. A creature that isn't known, or isn't eligible now, is a 400. Starting a shape form that is already active changes the beast: it spends a use unless free is set, and temp HP is re-applied.",
+            "type": "string"
+          },
+          "free": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "picks": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "FormView": {
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "choices": {
+            "items": {
+              "$ref": "#/components/schemas/Choice"
+            },
+            "type": "array"
+          },
+          "feature_id": {
+            "type": "string"
+          },
+          "fly_allowed": {
+            "description": "Shape forms only: whether creatures with a fly speed are allowed now.",
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "known_forms": {
+            "description": "Shape forms only: the character's Known Forms in the order they were picked, each with whether it can be taken now and, if not, why.",
+            "items": {
+              "$ref": "#/components/schemas/ShapeOption"
+            },
+            "type": "array"
+          },
+          "max_cr": {
+            "description": "Shape forms only: the highest creature CR the form allows now, as a CR string (\"1/2\"). Set only on shape forms.",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "picks": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object"
+          },
+          "resource_id": {
+            "type": "string"
+          },
+          "temp_hp": {
+            "description": "Shape forms only: the temp HP starting the form grants, after any shape.temp_hp modifier. Starting it sets temp HP to the higher of the current value and this.",
+            "type": "integer"
+          },
+          "uses_left": {
+            "type": "integer"
           }
         },
         "type": "object"
@@ -1598,6 +1805,10 @@
             "description": "Makes this a dice rider (for example 1d6 Sneak Attack), shown on attacks rather than added into numbers.",
             "type": "string"
           },
+          "form": {
+            "description": "In content: the form this modifier belongs to. It applies only while that form is active; otherwise it shows as a situational note, \"while \u003cName\u003e is active\". Never on the sheet.",
+            "type": "string"
+          },
           "kind": {
             "enum": [
               "add",
@@ -1637,6 +1848,14 @@
               "cha"
             ],
             "type": "string"
+          },
+          "value_formula": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Formula"
+              }
+            ],
+            "description": "Works the value out from a formula (\"three times your Druid level\") instead of a fixed number. Overrides value."
           },
           "value_speed": {
             "description": "Uses this speed as the value, for example a swimming speed equal to your walking speed. Pair it with kind min.",
@@ -2237,6 +2456,92 @@
         },
         "type": "object"
       },
+      "ShapeDef": {
+        "properties": {
+          "class_id": {
+            "type": "string"
+          },
+          "creature_tag": {
+            "type": "string"
+          },
+          "limits": {
+            "items": {
+              "$ref": "#/components/schemas/ShapeLimit"
+            },
+            "type": "array"
+          },
+          "temp_hp": {
+            "$ref": "#/components/schemas/Formula"
+          }
+        },
+        "type": "object"
+      },
+      "ShapeLimit": {
+        "properties": {
+          "fly": {
+            "type": "boolean"
+          },
+          "known": {
+            "type": "integer"
+          },
+          "max_cr": {
+            "type": "string"
+          },
+          "min_level": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ShapeOption": {
+        "properties": {
+          "cr": {
+            "type": "string"
+          },
+          "eligible": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ShapeView": {
+        "properties": {
+          "can_cast": {
+            "type": "boolean"
+          },
+          "cr": {
+            "type": "string"
+          },
+          "creature_id": {
+            "type": "string"
+          },
+          "form_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "size": {
+            "type": "string"
+          },
+          "traits": {
+            "items": {
+              "$ref": "#/components/schemas/Trait"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
       "Sheet": {
         "description": "Everything the rules engine computes for a character. Never stored; recomputed on every request.",
         "properties": {
@@ -2301,6 +2606,13 @@
             "description": "Every feature the character has, from classes, subclasses, race, background, feats and choices, in the order they resolved. The race and background themselves are listed too.",
             "items": {
               "$ref": "#/components/schemas/FeatureView"
+            },
+            "type": "array"
+          },
+          "forms": {
+            "description": "Forms the character can switch on (Rage, Bladesong), each with whether it is active, the uses left and the picks offered when it is activated. Start and end them with POST /api/characters/{id}/forms.",
+            "items": {
+              "$ref": "#/components/schemas/FormView"
             },
             "type": "array"
           },
@@ -2389,6 +2701,14 @@
               "$ref": "#/components/schemas/Sense"
             },
             "type": "array"
+          },
+          "shape": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ShapeView"
+              }
+            ],
+            "description": "Present while a shape form (Wild Shape) is active: the creature the character has become. The sheet's AC, Strength, Dexterity and Constitution, speeds and attacks are that creature's; the character keeps their own Intelligence, Wisdom and Charisma, their speed bonuses other than their species', and their proficiency bonus, saves and skills where they are higher."
           },
           "short_rest_exhaustion": {
             "type": "integer"
@@ -4156,6 +4476,104 @@
         ]
       }
     },
+    "/api/characters/{id}/forms": {
+      "post": {
+        "description": "For temporary states such as Rage, listed on the sheet's `forms`. Send exactly one of `start` or `end` (a form id). Starting spends a use of the form's resource unless `free` is true, and fails with 409 `no_uses` when none are left. Fill each of the form's `choices` in `picks` (choice id to option ids). Ending a form that isn't active does nothing, and nothing is refunded. To change picks, end the form and start it again with `free: true`. A long rest ends every form.",
+        "operationId": "changeForms",
+        "parameters": [
+          {
+            "description": "A character id (letters, digits, - and _), or a content id on the content routes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "start": {
+                  "id": "rage",
+                  "picks": {
+                    "rage_of_the_wilds": [
+                      "bear"
+                    ]
+                  }
+                }
+              },
+              "schema": {
+                "$ref": "#/components/schemas/FormAction"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "The updated sheet."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request: malformed JSON, an unknown field, an invalid id, or a request that can't be carried out. Rules problems are never errors; they come back as warnings on the sheet."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sign in required: the bearer token is missing, unknown or expired."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found: no such character, inventory entry, pet, feature or content."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "`already_exists`: you already have a character with that id. `version_conflict`: the character has changed since you read it, so fetch it again and retry."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Start or end a form",
+        "tags": [
+          "Play actions"
+        ]
+      }
+    },
     "/api/characters/{id}/hp": {
       "post": {
         "description": "Send exactly one of `damage`, `heal`, `temp` or `set`. Damage hits temporary HP first and stops at 0. Healing stops at max HP (and never lowers HP), and healing from 0 clears death saves. `temp` replaces temp HP. `set` bypasses every rule.",
@@ -5273,7 +5691,7 @@
     },
     "/api/characters/{id}/rest": {
       "post": {
-        "description": "Short: pact slots and short-rest resources come back. Long: also HP to max, temp HP cleared, all spell slots back, long-rest and dawn resources back, half your hit dice back (at least 1), death saves cleared, concentration ends, exhaustion drops by 1. Spending hit dice during a short rest is not automated.",
+        "description": "Short: pact slots and short-rest resources come back. Long: also HP to max, temp HP cleared, all spell slots back, long-rest and dawn resources back, half your hit dice back (at least 1), death saves cleared, concentration ends, exhaustion drops by 1, active forms end. Spending hit dice during a short rest is not automated.",
         "operationId": "rest",
         "parameters": [
           {

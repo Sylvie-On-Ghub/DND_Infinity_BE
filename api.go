@@ -190,7 +190,7 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 		switch re.Code {
 		case "not_found":
 			status = http.StatusNotFound
-		case "already_exists":
+		case "already_exists", "no_uses":
 			status = http.StatusConflict
 		}
 		writeError(w, status, re.Code, re.Msg)
@@ -481,6 +481,13 @@ func (s *Server) routeCharacters(w http.ResponseWriter, r *http.Request, segs []
 		if post() {
 			actOn(s, w, r, id, func(c *Character, _ Sheet, a ConditionsAction) (map[string]any, error) {
 				return nil, ApplyConditions(c, a)
+			})
+		}
+
+	case "forms":
+		if post() {
+			actOn(s, w, r, id, func(c *Character, pre Sheet, a FormAction) (map[string]any, error) {
+				return nil, ApplyForm(c, pre, a)
 			})
 		}
 

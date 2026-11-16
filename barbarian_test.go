@@ -268,3 +268,98 @@ func TestWildHeartAspects(t *testing.T) {
 		t.Errorf("Salmon swim speed = %d, want 40, matching the walking speed", got)
 	}
 }
+
+const rageOffCond = "while Rage is active"
+
+func barbAttackBonus(t *testing.T, sh Sheet, name string) int {
+	t.Helper()
+	for _, a := range sh.Attacks {
+		if a.Name == name {
+			return a.DamageBonus
+		}
+	}
+	t.Fatalf("no %s attack in %+v", name, sh.Attacks)
+	return 0
+}
+
+func TestRageOff(t *testing.T) {
+	lib := loadElfLib(t)
+	sh := mustCompute(t, barbChar(1), lib, Ruleset{})
+	noContentWarnings(t, sh)
+	if slices.Contains(sh.Resistances, "bludgeoning") {
+		t.Errorf("resistances = %v, want none outside a Rage", sh.Resistances)
+	}
+	if n, ok := barbNote(sh, "resist.bludgeoning", ModAdd); !ok || n.Condition != rageOffCond {
+		t.Errorf("resist.bludgeoning note = %+v, want condition %q", n, rageOffCond)
+	}
+	if n, ok := barbNote(sh, "damage.all", ModAdd); !ok || n.Condition != rageOffCond {
+		t.Errorf("damage.all note = %+v, want condition %q", n, rageOffCond)
+	}
+	if len(sh.Forms) != 1 || sh.Forms[0].ID != "rage" || sh.Forms[0].UsesLeft != 2 {
+		t.Errorf("Forms = %+v, want rage with 2 uses", sh.Forms)
+	}
+}
+
+func TestRageOn(t *testing.T) {
+	lib := loadElfLib(t)
+	c := barbChar(1)
+	c.Inventory = []InventoryItem{{ItemID: "greataxe", Quantity: 1, Equipped: true}, {ItemID: "shortbow", Quantity: 1, Equipped: true}}
+	off := mustCompute(t, c, lib, Ruleset{})
+	c.ActiveForms = []ActiveForm{{ID: "rage"}}
+	on := mustCompute(t, c, lib, Ruleset{})
+	noContentWarnings(t, on)
+
+	for _, d := range []string{"bludgeoning", "piercing", "slashing"} {
+		if !slices.Contains(on.Resistances, DamageType(d)) {
+			t.Errorf("resistances = %v, want %s", on.Resistances, d)
+		}
+	}
+	if n, ok := barbNote(on, "save.str", ModAdvantage); !ok || n.Condition != "" {
+		t.Errorf("Strength save advantage note = %+v (found %v), want it unconditional", n, ok)
+	}
+	if got, want := barbAttackBonus(t, on, "Greataxe"), barbAttackBonus(t, off, "Greataxe")+2; got != want {
+		t.Errorf("greataxe damage bonus = %d, want %d", got, want)
+	}
+	if got, want := barbAttackBonus(t, on, "Shortbow"), barbAttackBonus(t, off, "Shortbow"); got != want {
+		t.Errorf("shortbow damage bonus = %d, want %d (a Dex weapon)", got, want)
+	}
+}
+
+func TestRageWildHeartPicks(t *testing.T) {
+	lib := loadElfLib(t)
+	c := barbChar(3)
+	c.ActiveForms = []ActiveForm{{ID: "rage"}}
+	if sh := mustCompute(t, c, lib, Ruleset{}); !hasWarning(sh, WarnFormPickMissing) {
+		t.Errorf("want %s with no pick, got %+v", WarnFormPickMissing, sh.Warnings)
+	}
+
+	c.ActiveForms = []ActiveForm{{ID: "rage", Picks: map[string][]string{"rage_of_the_wilds": {"bear"}}}}
+	sh := mustCompute(t, c, lib, Ruleset{})
+	noContentWarnings(t, sh)
+	for _, d := range []string{"acid", "cold", "fire", "lightning", "poison", "thunder", "bludgeoning", "piercing", "slashing"} {
+		if !slices.Contains(sh.Resistances, DamageType(d)) {
+			t.Errorf("Bear resistances = %v, want %s", sh.Resistances, d)
+		}
+	}
+	for _, d := range []string{"force", "necrotic", "psychic", "radiant"} {
+		if slices.Contains(sh.Resistances, DamageType(d)) {
+			t.Errorf("Bear resistances = %v, shouldn't include %s", sh.Resistances, d)
+		}
+	}
+}
+
+func TestRagePowerOfTheWildsFalcon(t *testing.T) {
+	lib := loadElfLib(t)
+	c := barbChar(14)
+	c.ActiveForms = []ActiveForm{{ID: "rage", Picks: map[string][]string{
+		"rage_of_the_wilds": {"eagle"}, "power_of_the_wilds": {"falcon"}}}}
+	sh := mustCompute(t, c, lib, Ruleset{})
+	noContentWarnings(t, sh)
+	if sh.Speeds[SpeedWalk] == 0 || sh.Speeds[SpeedFly] != sh.Speeds[SpeedWalk] {
+		t.Errorf("speeds = %v, want fly equal to walk", sh.Speeds)
+	}
+	c.Inventory = []InventoryItem{{ItemID: "shield", Quantity: 1, Equipped: true}}
+	if sh := mustCompute(t, c, lib, Ruleset{}); sh.Speeds[SpeedFly] != 0 {
+		t.Errorf("fly speed with a shield = %d, want none", sh.Speeds[SpeedFly])
+	}
+}

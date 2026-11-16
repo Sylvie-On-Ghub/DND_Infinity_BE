@@ -688,16 +688,16 @@ func TestAPIContent(t *testing.T) {
 		Warnings int            `json:"warnings"`
 	}
 	into(t, rec, &overview)
-	if overview.Counts["classes"] != 10 || overview.Counts["skills"] != 18 || overview.Errors != 0 {
-		t.Errorf("overview = %+v, want 10 classes, 18 skills and no errors", overview)
+	if overview.Counts["classes"] != 11 || overview.Counts["skills"] != 18 || overview.Errors != 0 {
+		t.Errorf("overview = %+v, want 11 classes, 18 skills and no errors", overview)
 	}
 
 	rec = call(t, srv, http.MethodGet, "/api/content/classes", nil)
 	wantStatus(t, rec, http.StatusOK)
 	var classes []ContentSummary
 	into(t, rec, &classes)
-	if len(classes) != 10 || classes[0].ID != "barbarian" || classes[1].ID != "bard" || classes[2].ID != "cleric" || classes[3].ID != "fighter" || classes[4].ID != "monk" || classes[5].ID != "ranger" || classes[6].ID != "rogue" || classes[7].ID != "sorcerer" || classes[8].ID != "warlock" || classes[9].ID != "wizard" {
-		t.Errorf("classes = %+v, want barbarian, bard, cleric, fighter, monk, ranger, rogue, sorcerer, warlock and wizard sorted by id", classes)
+	if len(classes) != 11 || classes[0].ID != "barbarian" || classes[1].ID != "bard" || classes[2].ID != "cleric" || classes[3].ID != "druid" || classes[4].ID != "fighter" || classes[5].ID != "monk" || classes[6].ID != "ranger" || classes[7].ID != "rogue" || classes[8].ID != "sorcerer" || classes[9].ID != "warlock" || classes[10].ID != "wizard" {
+		t.Errorf("classes = %+v, want barbarian, bard, cleric, druid, fighter, monk, ranger, rogue, sorcerer, warlock and wizard sorted by id", classes)
 	}
 
 	rec = call(t, srv, http.MethodGet, "/api/content/classes/rogue", nil)
@@ -740,8 +740,8 @@ func TestAPIReloadSwapsContent(t *testing.T) {
 	rec = call(t, srv, http.MethodGet, "/api/content/classes", nil)
 	var after []ContentSummary
 	into(t, rec, &after)
-	if len(after) != 10 {
-		t.Errorf("after reload: %+v, want 10 classes", after)
+	if len(after) != 11 {
+		t.Errorf("after reload: %+v, want 11 classes", after)
 	}
 }
 
@@ -759,7 +759,7 @@ func TestAPIFailedReloadKeepsOldContent(t *testing.T) {
 	rec = call(t, srv, http.MethodGet, "/api/content/classes", nil)
 	var classes []ContentSummary
 	into(t, rec, &classes)
-	if len(classes) != 10 {
+	if len(classes) != 11 {
 		t.Errorf("a failed reload must leave the old content in place, got %+v", classes)
 	}
 }
@@ -1027,5 +1027,90 @@ func TestAPIPetsFlow(t *testing.T) {
 	into(t, rec, &owl)
 	if owl.Name != "Owl" {
 		t.Errorf("owl = %+v", owl)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Forms
+// ---------------------------------------------------------------------------
+
+func TestAPIForms(t *testing.T) {
+	lib := mustLoad(t, LoadOptions{}, memPack("p", map[string]string{
+		"features/rager.json": `{"id":"rager","name":"Rager","origin":"feat","form":{"id":"rage","name":"Rage"},
+			"resource":{"name":"Rage","max":2,"recharge":"long_rest"}}`,
+	}))
+	if lib.HasErrors() {
+		dumpIssues(t, lib)
+		t.Fatal("the forms pack should load")
+	}
+	srv, store := newTestServer(t, func(cfg *Config) { cfg.Library = lib })
+	saveFixture(t, store, Character{ID: "r1", Name: "Rager", FeatureIDs: []string{"rager"}})
+	path := "/api/characters/r1/forms"
+
+	e := post(t, srv, path, `{"start":{"id":"rage"}}`)
+	if len(e.Sheet.Forms) != 1 || !e.Sheet.Forms[0].Active {
+		t.Fatalf("forms after start: %+v", e.Sheet.Forms)
+	}
+	wantError(t, call(t, srv, http.MethodPost, path, `{"start":{"id":"rage"}}`), http.StatusBadRequest, "bad_request")
+	wantError(t, call(t, srv, http.MethodPost, path, `{"start":{"id":"nope"}}`), http.StatusBadRequest, "bad_request")
+
+	e = post(t, srv, path, `{"end":"rage"}`)
+	if e.Sheet.Forms[0].Active {
+		t.Errorf("form still active after end: %+v", e.Sheet.Forms[0])
+	}
+	post(t, srv, "/api/characters/r1/resources/rager", `{"spend": 1}`) // the second use is gone
+	wantError(t, call(t, srv, http.MethodPost, path, `{"start":{"id":"rage"}}`), http.StatusConflict, "no_uses")
+	e = post(t, srv, path, `{"start":{"id":"rage","free":true}}`)
+	if !e.Sheet.Forms[0].Active {
+		t.Errorf("a free start should work with no uses left")
+	}
+}
+
+// shapePack writes the Wild Shape fixture out as a content pack.
+func shapePack(t *testing.T) PackSource {
+	t.Helper()
+	fl := shapeLib()
+	files := map[string]string{}
+	add := func(path string, v any) {
+		b, err := json.Marshal(v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files[path] = string(b)
+	}
+	for id, f := range fl.features {
+		add("features/"+id+".json", f)
+	}
+	for id, cl := range fl.classes {
+		add("classes/"+id+".json", cl)
+	}
+	for id, cr := range fl.creatures {
+		add("creatures/"+id+".json", cr)
+	}
+	add("skills.json", fl.Skills())
+	return memPack("p", files)
+}
+
+func TestAPIWildShape(t *testing.T) {
+	lib := mustLoad(t, LoadOptions{}, shapePack(t))
+	if lib.HasErrors() {
+		dumpIssues(t, lib)
+		t.Fatal("the Wild Shape pack should load")
+	}
+	srv, store := newTestServer(t, func(cfg *Config) { cfg.Library = lib })
+	c := druidChar(4, "wolf", "shell", "bear")
+	c.ID = "d1"
+	saveFixture(t, store, c)
+	path := "/api/characters/d1/forms"
+
+	wantError(t, call(t, srv, http.MethodPost, path, `{"start":{"id":"wild_shape","creature_id":"bear"}}`), http.StatusBadRequest, "bad_request")
+	wantError(t, call(t, srv, http.MethodPost, path, `{"start":{"id":"wild_shape"}}`), http.StatusBadRequest, "bad_request")
+	e := post(t, srv, path, `{"start":{"id":"wild_shape","creature_id":"wolf"}}`)
+	if e.Sheet.Shape == nil || e.Sheet.Shape.CreatureID != "wolf" {
+		t.Fatalf("shape after start: %+v", e.Sheet.Shape)
+	}
+	e = post(t, srv, path, `{"start":{"id":"wild_shape","creature_id":"shell"}}`)
+	if e.Sheet.Shape == nil || e.Sheet.Shape.CreatureID != "shell" {
+		t.Errorf("shape after change: %+v", e.Sheet.Shape)
 	}
 }

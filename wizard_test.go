@@ -261,3 +261,44 @@ func TestDiviner(t *testing.T) {
 		t.Error("no Expert Divination note")
 	}
 }
+
+func TestBladesongForm(t *testing.T) {
+	lib := loadElfLib(t)
+	c := wizardAt(3, "bladesinger")
+	off := mustCompute(t, c, lib, Ruleset{})
+	noContentWarnings(t, off)
+	if off.AC != 12 || off.Speeds[SpeedWalk] != 30 {
+		t.Errorf("off: AC %d, walk %d, want 12 and 30", off.AC, off.Speeds[SpeedWalk])
+	}
+	const offCond = "while Bladesong is active"
+	for target, kind := range map[string]ModKind{"ac": ModAdd, "speed.walk": ModAdd, "skill.acrobatics": ModAdvantage} {
+		if n, ok := barbNote(off, target, kind); !ok || n.Condition != offCond {
+			t.Errorf("off: %s note = %+v (found %v), want condition %q", target, n, ok, offCond)
+		}
+	}
+	if n, ok := barbNote(off, "save.con", ModAdd); !ok || n.Condition != offCond+", to keep Concentration" {
+		t.Errorf("off: save.con note = %+v, want %q", n, offCond+", to keep Concentration")
+	}
+	if n, ok := barbNote(off, "attack.all", ModNote); !ok || strings.Contains(n.Note, "while your Bladesong is active") || n.Condition != offCond {
+		t.Errorf("off: Bladework note = %+v, want condition %q and no 'while your Bladesong' text", n, offCond)
+	}
+
+	c.ActiveForms = []ActiveForm{{ID: "bladesong"}}
+	on := mustCompute(t, c, lib, Ruleset{})
+	noContentWarnings(t, on)
+	if on.AC != off.AC+3 {
+		t.Errorf("on: AC = %d, want %d (Int +3)", on.AC, off.AC+3)
+	}
+	if on.Speeds[SpeedWalk] != off.Speeds[SpeedWalk]+10 {
+		t.Errorf("on: walk = %d, want %d", on.Speeds[SpeedWalk], off.Speeds[SpeedWalk]+10)
+	}
+	if n, ok := barbNote(on, "skill.acrobatics", ModAdvantage); !ok || n.Condition != "" {
+		t.Errorf("on: Acrobatics advantage note = %+v (found %v), want it unconditional", n, ok)
+	}
+	if sk, ok := on.Skills["acrobatics"]; !ok || !sk.Advantage {
+		t.Errorf("on: Acrobatics = %+v (found %v), want advantage", sk, ok)
+	}
+	if n, ok := barbNote(on, "save.con", ModAdd); !ok || n.Condition != "to keep Concentration" {
+		t.Errorf("on: save.con note = %+v, want condition %q", n, "to keep Concentration")
+	}
+}

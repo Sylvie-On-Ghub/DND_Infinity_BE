@@ -235,6 +235,107 @@ func TestValidationChoiceProblems(t *testing.T) {
 	}
 }
 
+func TestValidationForms(t *testing.T) {
+	lib := mustLoad(t, LoadOptions{}, memPack("p", map[string]string{
+		"features/a.json": `{"id":"a","name":"A","origin":"feat","form":{"id":"rage","name":"Rage"},
+			"modifiers":[{"target":"ac","kind":"add","value":1,"form":"nope"}],
+			"form_choices":[
+				{"form":"rage","id":"c","prompt":"p","kind":"allocate","points":2,"options":[{"id":"x","name":"X"}]},
+				{"form":"nope","id":"d","prompt":"p","kind":"pick","count":1,"options":[{"id":"x","name":"X"}]}]}`,
+		"features/b.json": `{"id":"b","name":"B","origin":"feat","form":{"id":"rage","name":"Rage Again"}}`,
+		"features/c.json": `{"id":"c","name":"C","origin":"feat","form":{"id":"","name":""}}`,
+	}))
+	for _, want := range []string{`form "rage"`, `unknown form "nope"`, "form choice", "form needs an id and a name"} {
+		if !hasIssue(lib, SevError, want) {
+			t.Errorf("expected an error containing %q, got %v", want, lib.Issues())
+		}
+	}
+}
+
+func TestValidationFormChoiceShape(t *testing.T) {
+	lib := mustLoad(t, LoadOptions{}, memPack("p", map[string]string{
+		"features/a.json": `{"id":"a","name":"A","origin":"feat","form":{"id":"rage","name":"Rage"},
+			"form_choices":[
+				{"form":"rage","id":"f","prompt":"p","kind":"pick","count":1,"filter":{"type":"skill"}},
+				{"form":"rage","id":"m","prompt":"p","kind":"pick","count":1,
+				 "options":[{"id":"x","name":"X","modifiers":[{"target":"skil.stealth","kind":"add","value":1}]}]}]}`,
+	}))
+	for _, want := range []string{"need explicit options", "unknown target"} {
+		if !hasIssue(lib, SevError, want) {
+			t.Errorf("expected an error containing %q, got %v", want, lib.Issues())
+		}
+	}
+}
+
+func TestValidationFormChoiceGrantsAndCollisions(t *testing.T) {
+	lib := mustLoad(t, LoadOptions{}, memPack("p", map[string]string{
+		"features/a.json": `{"id":"a","name":"A","origin":"feat","form":{"id":"rage","name":"Rage","no_cost":true},
+			"form_choices":[{"form":"rage","id":"animal","prompt":"p","kind":"pick","count":1,
+			 "options":[{"id":"x","name":"X","grants":{"languages":["elvish"]}}]}]}`,
+		"features/b.json": `{"id":"b","name":"B","origin":"feat",
+			"form_choices":[{"form":"rage","id":"animal","prompt":"p","kind":"pick","count":1,
+			 "options":[{"id":"y","name":"Y"}]}]}`,
+	}))
+	for _, want := range []string{"would be ignored", "already has a choice with this id"} {
+		if !hasIssue(lib, SevError, want) {
+			t.Errorf("expected an error containing %q, got %v", want, lib.Issues())
+		}
+	}
+}
+
+func TestValidationFormNoResource(t *testing.T) {
+	lib := mustLoad(t, LoadOptions{}, memPack("p", map[string]string{
+		"features/costly.json": `{"id":"costly","name":"Costly","origin":"feat","form":{"id":"a","name":"A"}}`,
+		"features/free.json":   `{"id":"free","name":"Free","origin":"feat","form":{"id":"b","name":"B","no_cost":true}}`,
+		"features/tiered.json": `{"id":"tiered","name":"Tiered","origin":"feat","form":{"id":"c","name":"C"},
+			"tiers":[{"min_level":1,"resource":{"name":"R","max":1,"recharge":"long_rest"}}]}`,
+	}))
+	if !hasIssue(lib, SevWarning, "form a has no resource") {
+		t.Errorf("expected a no-resource warning for form a, got %v", lib.Issues())
+	}
+	for _, is := range lib.Issues() {
+		if is.Severity == SevWarning && (strings.Contains(is.Message, "form b") || strings.Contains(is.Message, "form c")) {
+			t.Errorf("unexpected warning: %v", is)
+		}
+	}
+}
+
+func TestValidationFormOK(t *testing.T) {
+	lib := mustLoad(t, LoadOptions{}, memPack("p", map[string]string{
+		"features/a.json": `{"id":"a","name":"A","origin":"feat","form":{"id":"rage","name":"Rage","no_cost":true},
+			"modifiers":[{"target":"resist.fire","kind":"add","value":1,"form":"rage"}]}`,
+		"features/b.json": `{"id":"b","name":"B","origin":"feat",
+			"form_choices":[{"form":"rage","id":"animal","prompt":"p","kind":"pick","count":1,
+			 "options":[{"id":"bear","name":"Bear","modifiers":[{"target":"resist.cold","kind":"add","value":1}]}]}]}`,
+	}))
+	if len(lib.Issues()) != 0 {
+		t.Errorf("expected no issues, got %v", lib.Issues())
+	}
+}
+
+func TestValidationNewRequires(t *testing.T) {
+	lib := mustLoad(t, LoadOptions{}, memPack("p", map[string]string{
+		"classes/sorcerer.json": `{"id":"sorcerer","name":"Sorcerer","hit_die":6,"levels":[]}`,
+		"features/ok.json": `{"id":"ok","name":"Ok","origin":"feat","modifiers":[
+			{"target":"damage.all","kind":"add","value":2,"requires":"strength_attack"},
+			{"target":"ac","kind":"add","value":1,"requires":"only_caster:sorcerer"}]}`,
+		"features/bad.json": `{"id":"bad","name":"Bad","origin":"feat","modifiers":[
+			{"target":"ac","kind":"add","value":1,"requires":"strength_attack"},
+			{"target":"ac","kind":"add","value":1,"requires":"only_caster:"},
+			{"target":"ac","kind":"add","value":1,"requires":"only_caster:nope"}]}`,
+	}))
+	for _, want := range []string{"only works on attack or damage targets", "needs a class id", `unknown class "nope"`} {
+		if !hasIssue(lib, SevError, want) {
+			t.Errorf("expected an error containing %q, got %v", want, lib.Issues())
+		}
+	}
+	for _, is := range lib.Issues() {
+		if is.Kind == "feature" && is.ID == "ok" {
+			t.Errorf("feature ok should load cleanly, got %v", is)
+		}
+	}
+}
+
 func TestValidationSkillReferences(t *testing.T) {
 	feature := `{"id":"f","name":"F","origin":"feat",
 		"grants":{"skills":{"stealth":"trained"}},
@@ -356,7 +457,7 @@ func TestLoaderChecksSubclassSpellcasting(t *testing.T) {
 func TestExamplePackLoadsClean(t *testing.T) {
 	lib := loadExample(t)
 	c := lib.Counts()
-	if c["skills"] != 18 || c["classes"] != 10 || c["spell_lists"] != 7 {
+	if c["skills"] != 18 || c["classes"] != 11 || c["spell_lists"] != 7 {
 		t.Errorf("counts = %v", c)
 	}
 	for _, is := range lib.Issues() {
@@ -675,5 +776,57 @@ func TestPetTargetsLoad(t *testing.T) {
 	if lib := load("pet.familiar.bogus"); !hasIssue(lib, SevError, "pet.familiar.bogus") {
 		dumpIssues(t, lib)
 		t.Error("a pet target with a bad inner target should be an error")
+	}
+}
+
+func TestLoaderShapeValidation(t *testing.T) {
+	const shape = `{"creature_tag":"wild_shape","class_id":"druid","temp_hp":{"base":0},"limits":[{"min_level":2,"known":4,"max_cr":"1/4"}]}`
+	files := func(over map[string]string) map[string]string {
+		m := map[string]string{
+			"classes/druid.json":  `{"id":"druid","name":"Druid","hit_die":8,"levels":[[]]}`,
+			"creatures/wolf.json": `{"id":"wolf","name":"Wolf","cr":"1/4","tags":["wild_shape"],"abilities":{"str":12}}`,
+			"features/ws.json":    `{"id":"ws","name":"Wild Shape","origin":"feat","form":{"id":"wild_shape","name":"Wild Shape","no_cost":true,"shape":` + shape + `}}`,
+		}
+		for k, v := range over {
+			m[k] = v
+		}
+		return m
+	}
+	feat := func(shapeJSON string) string {
+		return `{"id":"ws","name":"Wild Shape","origin":"feat","form":{"id":"wild_shape","name":"Wild Shape","no_cost":true,"shape":` + shapeJSON + `}}`
+	}
+
+	t.Run("valid", func(t *testing.T) {
+		lib := mustLoad(t, LoadOptions{Strict: true}, memPack("p", files(map[string]string{
+			"features/lvl.json": `{"id":"lvl","name":"Lvl","origin":"feat","modifiers":[{"target":"shape.temp_hp","kind":"set","value_formula":{"base":0,"terms":[{"source":"class_level.druid","mul":3}]},"form":"wild_shape"}],
+				"choices":[{"id":"c","prompt":"p","kind":"pick","count":1,"filter":{"type":"creature","tag":"wild_shape"}}]}`,
+			"features/ac.json": `{"id":"ac","name":"AC","origin":"feat","ac_formulas":[{"id":"x","name":"X","form":"wild_shape","formula":{"base":10}}]}`,
+		})))
+		for _, is := range lib.Issues() {
+			t.Error(is)
+		}
+	})
+
+	cases := []struct {
+		name  string
+		over  map[string]string
+		subst string
+	}{
+		{"bad cr", map[string]string{"creatures/wolf.json": `{"id":"wolf","name":"Wolf","cr":"1/3","tags":["wild_shape"],"abilities":{"str":12}}`}, "must be 0, 1/8"},
+		{"tagged without cr", map[string]string{"creatures/wolf.json": `{"id":"wolf","name":"Wolf","tags":["wild_shape"],"abilities":{"str":12}}`}, "needs a cr"},
+		{"no limits", map[string]string{"features/ws.json": feat(`{"creature_tag":"wild_shape","class_id":"druid"}`)}, "limits"},
+		{"bad class", map[string]string{"features/ws.json": feat(`{"creature_tag":"wild_shape","class_id":"nope","limits":[{"min_level":2,"known":4,"max_cr":"1/4"}]}`)}, "class_id"},
+		{"bad max_cr", map[string]string{"features/ws.json": feat(`{"creature_tag":"wild_shape","class_id":"druid","limits":[{"min_level":2,"known":4,"max_cr":"big"}]}`)}, "max_cr"},
+		{"no creature has tag", map[string]string{"features/ws.json": feat(`{"creature_tag":"moon","class_id":"druid","limits":[{"min_level":2,"known":4,"max_cr":"1/4"}]}`)}, "creature_tag"},
+		{"bad value_formula", map[string]string{"features/m.json": `{"id":"m","name":"M","origin":"feat","modifiers":[{"target":"shape.temp_hp","kind":"set","value_formula":{"base":0,"terms":[{"source":"bogus"}]}}]}`}, "bogus"},
+		{"bad ac form", map[string]string{"features/ac.json": `{"id":"ac","name":"AC","origin":"feat","ac_formulas":[{"id":"x","name":"X","form":"nope","formula":{"base":10}}]}`}, "nope"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := LoadPacks(LoadOptions{Strict: true}, memPack("p", files(tc.over)))
+			if err == nil || !strings.Contains(err.Error(), tc.subst) {
+				t.Errorf("want an error mentioning %q, got %v", tc.subst, err)
+			}
+		})
 	}
 }

@@ -114,7 +114,15 @@ const (
 	TargetDamageSpell      = "damage.spell"
 	// TargetShortRestExhaustion is how many Exhaustion levels a Short Rest removes (Tireless).
 	TargetShortRestExhaustion = "rest.short.exhaustion"
+
+	// Shape targets are read only while a shape form (Wild Shape) is active or being started.
+	TargetShapeMaxCR      = "shape.max_cr"      // min: raises the max CR to a whole number
+	TargetShapeTempHP     = "shape.temp_hp"     // set: replaces the temp HP the shape grants
+	TargetShapeCastSpells = "shape.cast_spells" // set 1: the character can cast spells while shaped
 )
+
+// KnownFormsChoice is the id of the choice a shape form synthesises on its declaring feature.
+const KnownFormsChoice = "known_forms"
 
 func CantripDamageTarget(classID string) string { return "damage.cantrip." + classID } // that class's cantrips only
 func CantripsKnownTarget(classID string) string { return "spell.cantrips." + classID } // extra cantrips that class knows
@@ -143,7 +151,12 @@ const (
 	RequiresThrown           = "thrown_weapon"             // an attack made by throwing a weapon
 	RequiresMeleeWeapon      = "melee_weapon"              // an attack made with a melee weapon, so not an unarmed strike
 	RequiresWeapon           = "weapon"                    // an attack made with any weapon, melee, ranged or thrown
+	RequiresStrengthAttack   = "strength_attack"           // an attack made with Strength, so a Strength weapon or an unarmed strike (Rage)
 )
+
+// RequiresOnlyCasterPrefix starts "only_caster:<class id>": the modifier applies only when that class is the
+// character's sole spellcasting class.
+const RequiresOnlyCasterPrefix = "only_caster:"
 
 type Modifier struct {
 	Target string  `json:"target"`
@@ -153,8 +166,13 @@ type Modifier struct {
 	ValueAbility Ability `json:"value_ability,omitempty"`
 	// ValueSpeed uses one of the character's speeds as the value ("a swimming speed equal to your speed").
 	ValueSpeed SpeedType `json:"value_speed,omitempty"`
+	// ValueFormula computes the value from a Formula ("three times your Druid level"). Overrides Value.
+	ValueFormula *Formula `json:"value_formula,omitempty"`
 	// Requires limits the modifier to certain equipment: one of the Requires constants.
 	Requires string `json:"requires,omitempty"`
+	// Form ties the modifier to a form (Rage, Bladesong): it applies while that form is active and shows as a
+	// "while <form> is active" reminder otherwise.
+	Form string `json:"form,omitempty"`
 	// Dice makes this a "dice rider" (Sneak Attack 3d6, Hunter's Mark 1d6, Bless 1d4). Only meaningful with
 	// Kind ModAdd. Riders are never summed into flat numbers; on attack/damage targets they are listed on the
 	// matching attack entries, elsewhere they surface in Sheet.Notes.
@@ -236,6 +254,39 @@ type Feature struct {
 	Repeatable    bool           `json:"repeatable,omitempty"`    // can be taken more than once (Ability Score Improvement as a feat); each pick is its own instance with its own choices
 	Spells        *SpellGrant    `json:"spells,omitempty"`        // spells this feature lets the character cast (innate casting)
 	Pets          *PetGrant      `json:"pets,omitempty"`          // creatures this feature lets the character keep as pets
+	Form          *FormDef       `json:"form,omitempty"`          // a temporary state this feature lets the character switch on (Rage, Bladesong)
+	FormChoices   []FormChoice   `json:"form_choices,omitempty"`  // picks offered when a form is switched on, declared by the feature that adds them
+}
+
+// FormDef declares a form: a state switched on and off over the API, with modifiers tagged to it.
+// Switching it on spends a use of the feature's resource unless NoCost is set.
+type FormDef struct {
+	ID     string    `json:"id"`
+	Name   string    `json:"name"`
+	NoCost bool      `json:"no_cost,omitempty"`
+	Shape  *ShapeDef `json:"shape,omitempty"` // this form substitutes a creature's stat block
+}
+
+// ShapeDef makes a form a shape: while it is active the character takes on a creature's stat block.
+type ShapeDef struct {
+	CreatureTag string       `json:"creature_tag"` // "wild_shape": creatures this form can become
+	ClassID     string       `json:"class_id"`     // "druid": whose level the limits read
+	Limits      []ShapeLimit `json:"limits"`       // highest MinLevel at or below the class level applies
+	TempHP      Formula      `json:"temp_hp"`      // granted on start; shape.temp_hp set replaces it
+}
+
+// ShapeLimit is what a shape allows from MinLevel of the class on.
+type ShapeLimit struct {
+	MinLevel int    `json:"min_level"`
+	Known    int    `json:"known"`  // Known Forms count
+	MaxCR    string `json:"max_cr"` // a CR string
+	Fly      bool   `json:"fly"`    // forms with a fly speed allowed
+}
+
+// FormChoice is a pick offered when the named form is switched on. Only pick choices with explicit options.
+type FormChoice struct {
+	Form string `json:"form"`
+	Choice
 }
 
 // Grants are non-numeric things a feature (or a picked option) gives the character.
@@ -276,7 +327,7 @@ type Option struct {
 // A spell pool ({Type:"spell", SpellList:"warlock", Level:6}) adds each pick to the feature's own
 // spells block, so the picks share its casting ability and resource (Mystic Arcanum).
 type PoolFilter struct {
-	Type      string   `json:"type"` // skill | tool | language | feat | feature_tag | spell
+	Type      string   `json:"type"` // skill | tool | language | feat | feature_tag | spell | creature
 	Tag       string   `json:"tag,omitempty"`
 	Allowed   []string `json:"allowed,omitempty"`    // restrict to this subset (e.g. a class skill list)
 	SpellList string   `json:"spell_list,omitempty"` // spell pools: spells on this list
@@ -316,13 +367,20 @@ type Selection struct {
 type WarningCode string
 
 const (
-	WarnNotInPool          WarningCode = "not_in_pool"
-	WarnOverCount          WarningCode = "over_count"
-	WarnPrereqUnmet        WarningCode = "prereq_unmet"
-	WarnPrereqUnverifiable WarningCode = "prereq_unverifiable"
-	WarnUnknownID          WarningCode = "unknown_id"     // feature/option no longer in the library
-	WarnUnknownTarget      WarningCode = "unknown_target" // modifier target not in the valid set
-	WarnOverCap            WarningCode = "over_cap"       // e.g. inspiration above Ruleset.MaxInspiration
+	WarnNotInPool            WarningCode = "not_in_pool"
+	WarnOverCount            WarningCode = "over_count"
+	WarnPrereqUnmet          WarningCode = "prereq_unmet"
+	WarnPrereqUnverifiable   WarningCode = "prereq_unverifiable"
+	WarnUnknownID            WarningCode = "unknown_id"             // feature/option no longer in the library
+	WarnUnknownTarget        WarningCode = "unknown_target"         // modifier target not in the valid set
+	WarnOverCap              WarningCode = "over_cap"               // e.g. inspiration above Ruleset.MaxInspiration
+	WarnFormUnavailable      WarningCode = "form_unavailable"       // an active form whose feature the character no longer has
+	WarnFormPickMissing      WarningCode = "form_pick_missing"      // an active form with a required pick not made
+	WarnFormPickInvalid      WarningCode = "form_pick_invalid"      // a stored form pick that doesn't match an offered option
+	WarnFormUnknown          WarningCode = "form_unknown"           // an ad hoc modifier names a form the character doesn't have
+	WarnShapeUnknownCreature WarningCode = "shape_unknown_creature" // an active shape names a creature that isn't in the library
+	WarnShapeNotKnown        WarningCode = "shape_not_known"        // an active shape names a creature that isn't among the known forms
+	WarnShapeIneligible      WarningCode = "shape_ineligible"       // an active shape is over the max CR or flies when it can't
 )
 
 type Warning struct {
@@ -452,6 +510,13 @@ type Details struct {
 	Appearance        string `json:"appearance,omitempty"`
 }
 
+// ActiveForm is a form that is switched on, with the picks made when it was started (choice id to option ids).
+type ActiveForm struct {
+	ID         string              `json:"id"`
+	Picks      map[string][]string `json:"picks,omitempty"`
+	CreatureID string              `json:"creature_id,omitempty"` // shape forms only
+}
+
 type Character struct {
 	ID           string  `json:"id"`
 	Version      int     `json:"version,omitempty"` // set by the store; PUT and PATCH must send the version they read
@@ -466,13 +531,14 @@ type Character struct {
 	Abilities map[Ability]AbilityScore `json:"abilities"`
 
 	// Play state
-	CurrentHP   int         `json:"current_hp"`
-	TempHP      int         `json:"temp_hp"` // top level, as planned
-	HitDiceUsed int         `json:"hit_dice_used"`
-	DeathSaves  [2]int      `json:"death_saves"` // successes, failures
-	Inspiration int         `json:"inspiration"` // validated against Ruleset.MaxInspiration
-	Conditions  []Condition `json:"conditions"`
-	Exhaustion  int         `json:"exhaustion"`
+	CurrentHP   int          `json:"current_hp"`
+	TempHP      int          `json:"temp_hp"` // top level, as planned
+	ActiveForms []ActiveForm `json:"active_forms,omitempty"`
+	HitDiceUsed int          `json:"hit_dice_used"`
+	DeathSaves  [2]int       `json:"death_saves"` // successes, failures
+	Inspiration int          `json:"inspiration"` // validated against Ruleset.MaxInspiration
+	Conditions  []Condition  `json:"conditions"`
+	Exhaustion  int          `json:"exhaustion"`
 
 	// Proficiencies (stored as levels; bonuses are computed)
 	Skills       map[string]ProficiencyLevel `json:"skills"`                  // keyed by SkillDef.ID
@@ -566,10 +632,50 @@ type Sheet struct {
 	WeaponProfs      []string                `json:"weapon_profs"`
 	Pets             []PetView               `json:"pets"`
 	PetSources       []PetSourceView         `json:"pet_sources"` // what the character can summon or keep as a pet
+	Forms            []FormView              `json:"forms,omitempty"`
+	Shape            *ShapeView              `json:"shape,omitempty"` // set while a shape form is active
 	// ShortRestExhaustion is how many Exhaustion levels a Short Rest removes (from rest.short.exhaustion).
 	ShortRestExhaustion int `json:"short_rest_exhaustion,omitempty"`
 
 	petMods []Modifier // owner modifiers aimed at pets; read when computing pets, not part of the API
+}
+
+// FormView is a form the character can switch on, and whether it is on.
+type FormView struct {
+	ID         string              `json:"id"`
+	Name       string              `json:"name"`
+	FeatureID  string              `json:"feature_id"` // instance id of the declaring feature
+	Active     bool                `json:"active"`
+	ResourceID string              `json:"resource_id,omitempty"` // empty for NoCost forms
+	UsesLeft   int                 `json:"uses_left,omitempty"`
+	Picks      map[string][]string `json:"picks,omitempty"`   // current picks when active
+	Choices    []Choice            `json:"choices,omitempty"` // picks offered at activation
+
+	// Shape forms only.
+	MaxCR      string        `json:"max_cr,omitempty"`
+	FlyAllowed bool          `json:"fly_allowed,omitempty"`
+	TempHP     int           `json:"temp_hp,omitempty"` // what starting the form grants
+	KnownForms []ShapeOption `json:"known_forms,omitempty"`
+}
+
+// ShapeOption is one known form of a shape, with whether the character can take it now.
+type ShapeOption struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	CR       string `json:"cr"`
+	Eligible bool   `json:"eligible"`
+	Reason   string `json:"reason,omitempty"` // "CR 2 is above your max of 1"
+}
+
+// ShapeView is the creature a character is currently shaped as.
+type ShapeView struct {
+	FormID     string  `json:"form_id"`
+	CreatureID string  `json:"creature_id"`
+	Name       string  `json:"name"`
+	Size       string  `json:"size"`
+	CR         string  `json:"cr"`
+	Traits     []Trait `json:"traits"`
+	CanCast    bool    `json:"can_cast"` // true only with an active shape.cast_spells
 }
 
 // PetView is a pet's computed stat block plus its play state.
@@ -652,6 +758,7 @@ type ACFormula struct {
 	Formula  Formula `json:"formula"`
 	NoArmour bool    `json:"no_armour,omitempty"` // only eligible while no armour is worn
 	NoShield bool    `json:"no_shield,omitempty"` // only eligible while no shield is used (Monk)
+	Form     string  `json:"form,omitempty"`      // only eligible while this form is active
 }
 
 type ItemKind string
@@ -696,6 +803,7 @@ type Creature struct {
 	Size        string                      `json:"size,omitempty"`
 	Type        string                      `json:"type,omitempty"`
 	Tags        []string                    `json:"tags,omitempty"` // "familiar", "chain_familiar", "primal_companion"
+	CR          string                      `json:"cr,omitempty"`   // "0", "1/8", "1/4", "1/2", "1".."30"
 	Abilities   map[Ability]int             `json:"abilities"`
 	AC          Formula                     `json:"ac"`
 	HP          Formula                     `json:"hp"`

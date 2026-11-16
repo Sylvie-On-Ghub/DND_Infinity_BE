@@ -869,3 +869,238 @@ func TestMergePatchRejections(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Forms
+// ---------------------------------------------------------------------------
+
+func formSheet(usesLeft int) Sheet {
+	return Sheet{Forms: []FormView{{ID: "rage", Name: "Rage", FeatureID: "rager", ResourceID: "rager", UsesLeft: usesLeft,
+		Choices: []Choice{{ID: "animal", Kind: "pick", Count: 1, Options: []Option{{ID: "bear"}, {ID: "wolf"}}}}}}}
+}
+
+func startRage(picks map[string][]string, free bool) FormAction {
+	return FormAction{Start: &FormStart{ID: "rage", Picks: picks, Free: free}}
+}
+
+func TestApplyFormStart(t *testing.T) {
+	c := Character{}
+	picks := map[string][]string{"animal": {"bear"}}
+	if err := ApplyForm(&c, formSheet(1), startRage(picks, false)); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(c.ActiveForms, []ActiveForm{{ID: "rage", Picks: picks}}) || c.ResourceUsed["rager"] != 1 {
+		t.Errorf("forms = %+v, used = %v", c.ActiveForms, c.ResourceUsed)
+	}
+}
+
+func TestApplyFormStartFree(t *testing.T) {
+	c := Character{}
+	if err := ApplyForm(&c, formSheet(1), startRage(map[string][]string{"animal": {"wolf"}}, true)); err != nil {
+		t.Fatal(err)
+	}
+	if len(c.ActiveForms) != 1 || len(c.ResourceUsed) != 0 {
+		t.Errorf("forms = %+v, used = %v", c.ActiveForms, c.ResourceUsed)
+	}
+}
+
+func TestApplyFormNoUses(t *testing.T) {
+	c := Character{}
+	err := ApplyForm(&c, formSheet(0), startRage(map[string][]string{"animal": {"bear"}}, false))
+	wantCode(t, err, "no_uses")
+	if len(c.ActiveForms) != 0 || len(c.ResourceUsed) != 0 {
+		t.Errorf("character changed: %+v", c)
+	}
+	if err := ApplyForm(&c, formSheet(0), startRage(map[string][]string{"animal": {"bear"}}, true)); err != nil || len(c.ActiveForms) != 1 {
+		t.Errorf("free start with no uses: err = %v, forms = %+v", err, c.ActiveForms)
+	}
+}
+
+func TestApplyFormBadRequests(t *testing.T) {
+	active := Character{ActiveForms: []ActiveForm{{ID: "rage"}}}
+	bear := map[string][]string{"animal": {"bear"}}
+	tests := map[string]struct {
+		c Character
+		a FormAction
+	}{
+		"neither":        {Character{}, FormAction{}},
+		"both":           {Character{}, FormAction{Start: &FormStart{ID: "rage", Picks: bear}, End: "rage"}},
+		"unknown form":   {Character{}, FormAction{Start: &FormStart{ID: "nope"}}},
+		"already active": {active, startRage(bear, false)},
+		"missing pick":   {Character{}, startRage(nil, false)},
+		"unknown choice": {Character{}, startRage(map[string][]string{"animal": {"bear"}, "zzz": {"x"}}, false)},
+		"unknown option": {Character{}, startRage(map[string][]string{"animal": {"tiger"}}, false)},
+		"duplicate":      {Character{}, startRage(map[string][]string{"animal": {"bear", "bear"}}, false)},
+		"too many":       {Character{}, startRage(map[string][]string{"animal": {"bear", "wolf"}}, false)},
+	}
+	for name, tc := range tests {
+		c := tc.c
+		if err := ApplyForm(&c, formSheet(1), tc.a); !isBadRequest(err) {
+			t.Errorf("%s: err = %v, want bad_request", name, err)
+		}
+	}
+
+	// Count 1 would reject this as too many, so allow two picks to reach the duplicate check.
+	two := formSheet(1)
+	two.Forms[0].Choices[0].Count = 2
+	c := Character{}
+	if err := ApplyForm(&c, two, startRage(map[string][]string{"animal": {"bear", "bear"}}, false)); !isBadRequest(err) {
+		t.Errorf("duplicate pick: err = %v, want bad_request", err)
+	}
+}
+
+func TestApplyFormEnd(t *testing.T) {
+	c := Character{ActiveForms: []ActiveForm{{ID: "rage"}}}
+	if err := ApplyForm(&c, formSheet(1), FormAction{End: "rage"}); err != nil || len(c.ActiveForms) != 0 {
+		t.Errorf("err = %v, forms = %+v", err, c.ActiveForms)
+	}
+	if err := ApplyForm(&c, formSheet(1), FormAction{End: "rage"}); err != nil || len(c.ActiveForms) != 0 {
+		t.Errorf("ending an inactive form: err = %v, forms = %+v", err, c.ActiveForms)
+	}
+}
+
+func TestApplyFormEndRemovesUnavailable(t *testing.T) {
+	c := Character{ActiveForms: []ActiveForm{{ID: "holy_nimbus"}}}
+	if err := ApplyForm(&c, formSheet(1), FormAction{End: "holy_nimbus"}); err != nil || len(c.ActiveForms) != 0 {
+		t.Errorf("err = %v, forms = %+v", err, c.ActiveForms)
+	}
+}
+
+func TestApplyRestClearsForms(t *testing.T) {
+	c := Character{ActiveForms: []ActiveForm{{ID: "rage"}}}
+	if err := ApplyRest(&c, Sheet{}, "short"); err != nil || len(c.ActiveForms) != 1 {
+		t.Errorf("short rest: err = %v, forms = %+v", err, c.ActiveForms)
+	}
+	if err := ApplyRest(&c, Sheet{}, "long"); err != nil || c.ActiveForms != nil {
+		t.Errorf("long rest: err = %v, forms = %+v", err, c.ActiveForms)
+	}
+}
+
+func shapeStart(creature string, free bool) FormAction {
+	return FormAction{Start: &FormStart{ID: "wild_shape", CreatureID: creature, Free: free}}
+}
+
+func TestApplyFormShape(t *testing.T) {
+	lib := shapeLib()
+	known := []string{"wolf", "shell", "bear"}
+	sheetFor := func(c Character) Sheet { return mustCompute(t, c, lib, Ruleset{}) }
+	moonChar := func() Character {
+		c := druidChar(4, known...)
+		c.FeatureIDs = append(c.FeatureIDs, "moon")
+		return c
+	}
+
+	t.Run("start", func(t *testing.T) {
+		c := druidChar(4, known...)
+		if err := ApplyForm(&c, sheetFor(c), shapeStart("wolf", false)); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(c.ActiveForms, []ActiveForm{{ID: "wild_shape", CreatureID: "wolf"}}) ||
+			c.ResourceUsed["wild"] != 1 || c.TempHP != 4 {
+			t.Errorf("forms = %+v, used = %v, temp = %d", c.ActiveForms, c.ResourceUsed, c.TempHP)
+		}
+	})
+	t.Run("keeps higher temp HP", func(t *testing.T) {
+		c := druidChar(4, known...)
+		c.TempHP = 10
+		if err := ApplyForm(&c, sheetFor(c), shapeStart("wolf", false)); err != nil {
+			t.Fatal(err)
+		}
+		if c.TempHP != 10 {
+			t.Errorf("temp HP = %d, want 10", c.TempHP)
+		}
+	})
+	t.Run("moon temp HP", func(t *testing.T) {
+		c := moonChar()
+		if err := ApplyForm(&c, sheetFor(c), shapeStart("wolf", false)); err != nil {
+			t.Fatal(err)
+		}
+		if c.TempHP != 12 {
+			t.Errorf("temp HP = %d, want 12", c.TempHP)
+		}
+	})
+	t.Run("change beast", func(t *testing.T) {
+		c := druidChar(4, known...)
+		c.ActiveForms = []ActiveForm{{ID: "wild_shape", CreatureID: "wolf"}}
+		c.ResourceUsed = map[string]int{"wild": 1}
+		c.TempHP = 1
+		if err := ApplyForm(&c, sheetFor(c), shapeStart("shell", false)); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(c.ActiveForms, []ActiveForm{{ID: "wild_shape", CreatureID: "shell"}}) ||
+			c.ResourceUsed["wild"] != 2 || c.TempHP != 4 {
+			t.Errorf("forms = %+v, used = %v, temp = %d", c.ActiveForms, c.ResourceUsed, c.TempHP)
+		}
+	})
+	t.Run("change beast free", func(t *testing.T) {
+		c := druidChar(4, known...)
+		c.ActiveForms = []ActiveForm{{ID: "wild_shape", CreatureID: "wolf"}}
+		c.ResourceUsed = map[string]int{"wild": 1}
+		if err := ApplyForm(&c, sheetFor(c), shapeStart("shell", true)); err != nil {
+			t.Fatal(err)
+		}
+		if len(c.ActiveForms) != 1 || c.ActiveForms[0].CreatureID != "shell" || c.ResourceUsed["wild"] != 1 {
+			t.Errorf("forms = %+v, used = %v", c.ActiveForms, c.ResourceUsed)
+		}
+	})
+
+	t.Run("bad requests", func(t *testing.T) {
+		for name, tc := range map[string]struct {
+			c      Character
+			sh     Sheet
+			action FormAction
+		}{
+			"no creature":    {druidChar(4, known...), Sheet{}, shapeStart("", false)},
+			"not known":      {druidChar(4, known...), Sheet{}, shapeStart("croc", false)},
+			"ineligible":     {druidChar(4, known...), Sheet{}, shapeStart("bear", false)},
+			"no known forms": {druidChar(4), Sheet{}, shapeStart("wolf", false)},
+			"non-shape form": {Character{}, formSheet(1), FormAction{Start: &FormStart{ID: "rage", CreatureID: "wolf",
+				Picks: map[string][]string{"animal": {"bear"}}}}},
+		} {
+			t.Run(name, func(t *testing.T) {
+				sh := tc.sh
+				if sh.Forms == nil {
+					sh = sheetFor(tc.c)
+				}
+				before, _ := json.Marshal(tc.c)
+				if err := ApplyForm(&tc.c, sh, tc.action); !isBadRequest(err) {
+					t.Errorf("err = %v, want bad_request", err)
+				}
+				if after, _ := json.Marshal(tc.c); string(after) != string(before) {
+					t.Errorf("character changed: %s", after)
+				}
+			})
+		}
+	})
+	t.Run("no known forms names the choice", func(t *testing.T) {
+		c := druidChar(4)
+		err := ApplyForm(&c, sheetFor(c), shapeStart("wolf", false))
+		if want := "you have no Known Forms for Wild Shape; pick them first (choice known_forms)"; !isBadRequest(err) || err.Error() != want {
+			t.Errorf("err = %v, want bad_request %q", err, want)
+		}
+	})
+	t.Run("no uses", func(t *testing.T) {
+		c := druidChar(4, known...)
+		c.ResourceUsed = map[string]int{"wild": 2}
+		wantCode(t, ApplyForm(&c, sheetFor(c), shapeStart("wolf", false)), "no_uses")
+	})
+}
+
+func TestShortRestKeepsShape(t *testing.T) {
+	c := druidChar(4, "wolf")
+	c.ActiveForms = []ActiveForm{{ID: "wild_shape", CreatureID: "wolf"}}
+	c.ResourceUsed = map[string]int{"wild": 2}
+	sh := mustCompute(t, c, shapeLib(), Ruleset{})
+	if err := ApplyRest(&c, sh, "short"); err != nil {
+		t.Fatal(err)
+	}
+	if c.ResourceUsed["wild"] != 1 || len(c.ActiveForms) != 1 {
+		t.Errorf("after a short rest: used = %v, forms = %+v", c.ResourceUsed, c.ActiveForms)
+	}
+	if err := ApplyRest(&c, sh, "long"); err != nil {
+		t.Fatal(err)
+	}
+	if c.ResourceUsed["wild"] != 0 || len(c.ActiveForms) != 0 {
+		t.Errorf("after a long rest: used = %v, forms = %+v", c.ResourceUsed, c.ActiveForms)
+	}
+}

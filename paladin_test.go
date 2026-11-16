@@ -648,3 +648,19 @@ func TestDivineSmiteIsAnActionAndOnlyOnMeleeWeapons(t *testing.T) {
 		t.Errorf("unarmed riders = %v", got)
 	}
 }
+
+func TestHolyNimbusForm(t *testing.T) {
+	lib := loadPaladinLib(t)
+	c := paladinAt(20)
+	off := mustCompute(t, c, lib, Ruleset{})
+	const resid = "against spells cast by fiends or undead"
+	const offCond = "while Holy Nimbus is active, " + resid
+	if n, ok := barbNote(off, "save.all", ModAdvantage); !ok || n.Condition != offCond {
+		t.Errorf("off: save.all note = %+v (found %v), want condition %q", n, ok, offCond)
+	}
+	c.ActiveForms = []ActiveForm{{ID: "holy_nimbus"}}
+	on := mustCompute(t, c, lib, Ruleset{})
+	if n, ok := barbNote(on, "save.all", ModAdvantage); !ok || n.Condition != resid {
+		t.Errorf("on: save.all note = %+v (found %v), want condition %q", n, ok, resid)
+	}
+}

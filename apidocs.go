@@ -150,12 +150,16 @@ var apiRoutes = []routeDoc{
 		Request:     ResourceAction{}, Example: `{"spend": 1}`, Response: ActionResponse{}, Success: "The updated sheet.", Errors: []int{400, 404}},
 	{ID: "rest", Method: "POST", Path: "/api/characters/{id}/rest", Tag: "Play actions",
 		Summary:     "Take a short or long rest",
-		Description: "Short: pact slots and short-rest resources come back. Long: also HP to max, temp HP cleared, all spell slots back, long-rest and dawn resources back, half your hit dice back (at least 1), death saves cleared, concentration ends, exhaustion drops by 1. Spending hit dice during a short rest is not automated.",
+		Description: "Short: pact slots and short-rest resources come back. Long: also HP to max, temp HP cleared, all spell slots back, long-rest and dawn resources back, half your hit dice back (at least 1), death saves cleared, concentration ends, exhaustion drops by 1, active forms end. Spending hit dice during a short rest is not automated.",
 		Request:     restRequest{}, Example: `{"type": "long"}`, Response: ActionResponse{}, Success: "The updated sheet.", Errors: []int{400, 404}},
 	{ID: "changeConditions", Method: "POST", Path: "/api/characters/{id}/conditions", Tag: "Play actions",
 		Summary:     "Add or remove conditions",
 		Description: "All fields optional. Poisoned, frightened and blinded have built-in effects on the sheet; other names are recorded as-is.",
 		Request:     ConditionsAction{}, Example: `{"add": ["poisoned"], "remove": ["blinded"], "exhaustion": 1}`, Response: ActionResponse{}, Success: "The updated sheet.", Errors: []int{400, 404}},
+	{ID: "changeForms", Method: "POST", Path: "/api/characters/{id}/forms", Tag: "Play actions",
+		Summary:     "Start or end a form",
+		Description: "For temporary states such as Rage, listed on the sheet's `forms`. Send exactly one of `start` or `end` (a form id). Starting spends a use of the form's resource unless `free` is true, and fails with 409 `no_uses` when none are left. Fill each of the form's `choices` in `picks` (choice id to option ids). Ending a form that isn't active does nothing, and nothing is refunded. To change picks, end the form and start it again with `free: true`. A long rest ends every form.",
+		Request:     FormAction{}, Example: `{"start": {"id": "rage", "picks": {"rage_of_the_wilds": ["bear"]}}}`, Response: ActionResponse{}, Success: "The updated sheet.", Errors: []int{400, 404, 409}},
 	{ID: "levelUp", Method: "POST", Path: "/api/characters/{id}/level-up", Tag: "Play actions",
 		Summary:     "Add a level in a class",
 		Description: "Adds a level in `class_id` (adding the class at level 1 if the character doesn't have it) and records the hit points for it: `average` (default), `roll`, `max`, or `manual` with a `value`. A character's very first level always gets the maximum. Current HP is not changed. The returned sheet's `pending_choices` say what to ask the player next.",
@@ -295,6 +299,21 @@ var typeDocs = map[string]string{
 }
 
 var fieldDocs = map[string]string{
+	"Sheet.forms":                    "Forms the character can switch on (Rage, Bladesong), each with whether it is active, the uses left and the picks offered when it is activated. Start and end them with POST /api/characters/{id}/forms.",
+	"Character.active_forms":         "Forms that are switched on, with the picks made at activation. Normally changed through POST /api/characters/{id}/forms rather than written directly. A long rest clears it.",
+	"FormStart.creature_id":          "Shape forms (Wild Shape): the Known Form to become, from the form's known_forms. Required for a shape form and refused on any other. A creature that isn't known, or isn't eligible now, is a 400. Starting a shape form that is already active changes the beast: it spends a use unless free is set, and temp HP is re-applied.",
+	"ActiveForm.creature_id":         "Shape forms only: the creature the character has become. Set by starting the form with a creature_id.",
+	"Sheet.shape":                    "Present while a shape form (Wild Shape) is active: the creature the character has become. The sheet's AC, Strength, Dexterity and Constitution, speeds and attacks are that creature's; the character keeps their own Intelligence, Wisdom and Charisma, their speed bonuses other than their species', and their proficiency bonus, saves and skills where they are higher.",
+	"FormView.max_cr":                "Shape forms only: the highest creature CR the form allows now, as a CR string (\"1/2\"). Set only on shape forms.",
+	"FormView.fly_allowed":           "Shape forms only: whether creatures with a fly speed are allowed now.",
+	"FormView.temp_hp":               "Shape forms only: the temp HP starting the form grants, after any shape.temp_hp modifier. Starting it sets temp HP to the higher of the current value and this.",
+	"FormView.known_forms":           "Shape forms only: the character's Known Forms in the order they were picked, each with whether it can be taken now and, if not, why.",
+	"Creature.cr":                    "Challenge rating as a string: \"0\", \"1/8\", \"1/4\", \"1/2\", \"1\" to \"30\". Shape forms compare it with their max_cr.",
+	"Modifier.value_formula":         "Works the value out from a formula (\"three times your Druid level\") instead of a fixed number. Overrides value.",
+	"ACFormula.form":                 "The form this AC formula belongs to. It is offered only while that form is active (Circle Forms during Wild Shape).",
+	"Modifier.form":                  "In content: the form this modifier belongs to. It applies only while that form is active; otherwise it shows as a situational note, \"while <Name> is active\". Never on the sheet.",
+	"Feature.form":                   "A form this feature lets the character switch on. Its resource, if any, is spent when the form starts.",
+	"Feature.form_choices":           "Picks offered when a form is switched on, added to a form declared by this or another feature (Rage's Wild Heart animal).",
 	"Sheet.warnings":                 "Rules problems found in the character. The API never rejects these: show them, and let the user acknowledge ones that are intentional.",
 	"Sheet.pending_choices":          "Choices the character is entitled to but hasn't made. Drives level-up flows. Fill them in with the selections endpoint.",
 	"Sheet.notes":                    "Situational modifiers, advantage and disadvantage, and reminders that don't change a number.",
@@ -534,21 +553,7 @@ func (g *schemaGen) structSchema(t reflect.Type) map[string]any {
 	if _, done := g.components[name]; !done {
 		g.components[name] = map[string]any{} // placeholder, so recursive types terminate
 		props := map[string]any{}
-		for i := 0; i < t.NumField(); i++ {
-			f := t.Field(i)
-			if f.PkgPath != "" { // unexported
-				continue
-			}
-			jsonName, skip := jsonFieldName(f)
-			if skip {
-				continue
-			}
-			p := g.schema(f.Type)
-			if d, ok := fieldDocs[name+"."+jsonName]; ok {
-				p = withDescription(p, d)
-			}
-			props[jsonName] = p
-		}
+		g.addProps(t, props)
 		comp := map[string]any{"type": "object", "properties": props}
 		if d, ok := typeDocs[name]; ok {
 			comp["description"] = d
@@ -556,6 +561,31 @@ func (g *schemaGen) structSchema(t reflect.Type) map[string]any {
 		g.components[name] = comp
 	}
 	return schemaRef(name)
+}
+
+// addProps adds t's JSON properties to props. An embedded struct without a json name is flattened into
+// its parent, as encoding/json does.
+func (g *schemaGen) addProps(t reflect.Type, props map[string]any) {
+	name := schemaName(t)
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		if f.Anonymous && f.Type.Kind() == reflect.Struct && strings.Split(f.Tag.Get("json"), ",")[0] == "" {
+			g.addProps(f.Type, props)
+			continue
+		}
+		if f.PkgPath != "" { // unexported
+			continue
+		}
+		jsonName, skip := jsonFieldName(f)
+		if skip {
+			continue
+		}
+		p := g.schema(f.Type)
+		if d, ok := fieldDocs[name+"."+jsonName]; ok {
+			p = withDescription(p, d)
+		}
+		props[jsonName] = p
+	}
 }
 
 // ---------------------------------------------------------------------------

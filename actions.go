@@ -27,6 +27,10 @@ func badReq(format string, args ...any) error {
 	return &reqError{Code: "bad_request", Msg: fmt.Sprintf(format, args...)}
 }
 
+func noUses(format string, args ...any) error {
+	return &reqError{Code: "no_uses", Msg: fmt.Sprintf(format, args...)}
+}
+
 func notFound(format string, args ...any) error {
 	return &reqError{Code: "not_found", Msg: fmt.Sprintf(format, args...)}
 }
@@ -217,7 +221,7 @@ func restoreResources(c *Character, sh Sheet, match func(RechargeType) bool) {
 //	short: pact slots and short-rest resources come back, and short_rest_regain uses of other resources.
 //	long:  also HP to max, temp HP cleared, all slots back, long-rest and dawn resources back,
 //	       half your hit dice back (at least 1), death saves cleared, concentration ends,
-//	       exhaustion drops by 1.
+//	       exhaustion drops by 1, forms end.
 //
 // Spending hit dice during a short rest is not automated.
 func ApplyRest(c *Character, sh Sheet, kind string) error {
@@ -242,6 +246,7 @@ func ApplyRest(c *Character, sh Sheet, kind string) error {
 		c.PactSlotsUsed = 0
 		c.DeathSaves = [2]int{}
 		c.Concentrating = ""
+		c.ActiveForms = nil
 		if c.Exhaustion > 0 {
 			c.Exhaustion--
 		}
@@ -896,6 +901,11 @@ func findChoice(lib Library, featureID, choiceID string) (Choice, error) {
 			return skillReplacementChoice("Choose a replacement skill", 1), nil
 		}
 		choices = f.Choices
+		if f.Form != nil && f.Form.Shape != nil {
+			if ch, ok := knownFormsChoice(*f.Form.Shape, 20); ok { // the most it can ever offer
+				choices = append(slices.Clone(choices), ch)
+			}
+		}
 	}
 	for _, ch := range choices {
 		if ch.ID == choiceID {
@@ -1083,6 +1093,17 @@ func ChoiceOptions(c Character, lib Library, rules Ruleset, featureID, choiceID 
 				out = append(out, o)
 			}
 			sort.SliceStable(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+		case "creature":
+			info, def := shapeLimitsFor(sh, lib, featureID)
+			for _, cr := range lib.Creatures() {
+				if !slices.Contains(cr.Tags, f.Tag) {
+					continue
+				}
+				o := EligibleOption{OptionID: cr.ID, Name: cr.Name, Eligible: true}
+				o.Eligible, o.Reason = shapeEligible(info, cr, def.Name)
+				out = append(out, o)
+			}
+			sort.SliceStable(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 		default:
 			for _, id := range f.Allowed {
 				out = append(out, EligibleOption{OptionID: id, Name: id, Eligible: true})
@@ -1152,4 +1173,100 @@ func MergePatchCharacter(current Character, patch []byte) (Character, error) {
 		return Character{}, fmt.Errorf("%w: a character's id cannot be changed", ErrBadPatch)
 	}
 	return out, nil
+}
+
+// FormAction takes exactly one of start or end.
+type FormAction struct {
+	Start *FormStart `json:"start"`
+	End   string     `json:"end"` // form id
+}
+
+type FormStart struct {
+	ID         string              `json:"id"`
+	Picks      map[string][]string `json:"picks,omitempty"`
+	CreatureID string              `json:"creature_id,omitempty"` // shape forms: the known form to become
+	Free       bool                `json:"free,omitempty"`        // don't spend a use
+}
+
+// ApplyForm starts or ends a form. sh is the pre-action sheet, which says what forms exist, what
+// they offer to pick and how many uses are left. Ending a form that isn't active does nothing, and
+// nothing is refunded.
+func ApplyForm(c *Character, sh Sheet, a FormAction) error {
+	if (a.Start == nil) == (a.End == "") {
+		return badReq("send exactly one of start or end")
+	}
+	if a.End != "" {
+		c.ActiveForms = slices.DeleteFunc(c.ActiveForms, func(f ActiveForm) bool { return f.ID == a.End })
+		return nil
+	}
+
+	start := a.Start
+	idx := slices.IndexFunc(sh.Forms, func(f FormView) bool { return f.ID == start.ID })
+	if idx < 0 {
+		return badReq("unknown form %q", start.ID)
+	}
+	view := sh.Forms[idx]
+	// A shape form carries its limits on the view; starting one that is already active changes the beast.
+	shape := view.MaxCR != ""
+	active := slices.IndexFunc(c.ActiveForms, func(f ActiveForm) bool { return f.ID == start.ID })
+	if active >= 0 && !shape {
+		return badReq("form %q is already active", start.ID)
+	}
+	if shape {
+		if start.CreatureID == "" {
+			return badReq("form %q needs a creature_id", start.ID)
+		}
+		if len(view.KnownForms) == 0 {
+			return badReq("you have no Known Forms for %s; pick them first (choice %s)", view.Name, KnownFormsChoice)
+		}
+		n := slices.IndexFunc(view.KnownForms, func(o ShapeOption) bool { return o.ID == start.CreatureID })
+		if n < 0 {
+			return badReq("%q is not one of your Known Forms for %s", start.CreatureID, view.Name)
+		}
+		if o := view.KnownForms[n]; !o.Eligible {
+			return badReq("%s: %s", o.Name, o.Reason)
+		}
+	} else if start.CreatureID != "" {
+		return badReq("form %q is not a shape, so it takes no creature_id", start.ID)
+	}
+
+	for id := range start.Picks {
+		if !slices.ContainsFunc(view.Choices, func(ch Choice) bool { return ch.ID == id }) {
+			return badReq("form %q has no choice %q", start.ID, id)
+		}
+	}
+	for _, ch := range view.Choices {
+		picked := start.Picks[ch.ID]
+		if len(picked) == 0 || len(picked) > ch.Count {
+			return badReq("choice %q needs between 1 and %d picks", ch.ID, ch.Count)
+		}
+		for n, p := range picked {
+			if slices.Contains(picked[:n], p) {
+				return badReq("%q is picked twice for choice %q", p, ch.ID)
+			}
+			if !slices.ContainsFunc(ch.Options, func(o Option) bool { return o.ID == p }) {
+				return badReq("%q is not an option for choice %q", p, ch.ID)
+			}
+		}
+	}
+
+	if view.ResourceID != "" && !start.Free {
+		if view.UsesLeft < 1 {
+			return noUses("no uses of %s left", view.Name)
+		}
+		one := 1
+		if err := ApplyResource(c, view.ResourceID, ResourceAction{Spend: &one}); err != nil {
+			return err
+		}
+	}
+	af := ActiveForm{ID: start.ID, Picks: start.Picks, CreatureID: start.CreatureID}
+	if active >= 0 {
+		c.ActiveForms[active] = af
+	} else {
+		c.ActiveForms = append(c.ActiveForms, af)
+	}
+	if shape {
+		c.TempHP = max(c.TempHP, view.TempHP)
+	}
+	return nil
 }
