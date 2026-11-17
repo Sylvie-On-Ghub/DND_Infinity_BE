@@ -1,12 +1,13 @@
-// admin manages the accounts allowed to sign in.
+// admin manages the accounts allowed to sign in, and backs up the database.
 //
 //	go run ./cmd/admin add-user <discord_id> <discord_username>
 //	go run ./cmd/admin list-users
 //	go run ./cmd/admin rename-user <old_username> <new_username>
 //	go run ./cmd/admin remove-user <discord_username> --yes
+//	go run ./cmd/admin backup <dir>
 //
 // The database is DND_DB_PATH, or data/dnd.db if that isn't set. It is safe to use while the server
-// is running.
+// is running. backup writes a checked snapshot of it into dir and keeps the newest 7 there.
 package main
 
 import (
@@ -25,7 +26,8 @@ const usage = `usage:
   admin add-user <discord_id> <discord_username>
   admin list-users
   admin rename-user <old_username> <new_username>
-  admin remove-user <discord_username> --yes   (also deletes their characters)`
+  admin remove-user <discord_username> --yes   (also deletes their characters)
+  admin backup <dir>`
 
 func main() {
 	if err := run(context.Background(), os.Args[1:]); err != nil {
@@ -39,7 +41,7 @@ func run(ctx context.Context, args []string) error {
 		return fmt.Errorf("%s", usage)
 	}
 	cmd, args := args[0], args[1:]
-	wantArgs := map[string]int{"add-user": 2, "list-users": 0, "rename-user": 2, "remove-user": 1}
+	wantArgs := map[string]int{"add-user": 2, "list-users": 0, "rename-user": 2, "remove-user": 1, "backup": 1}
 	want, known := wantArgs[cmd]
 	yes := false
 	if cmd == "remove-user" && len(args) == 2 && (args[1] == "--yes" || args[1] == "-yes") {
@@ -53,6 +55,12 @@ func run(ctx context.Context, args []string) error {
 	path := os.Getenv("DND_DB_PATH")
 	if path == "" {
 		path = "data/dnd.db"
+	}
+	// OpenDB would create a missing database, and backing that up hides a wrong DND_DB_PATH.
+	if cmd == "backup" {
+		if _, err := os.Stat(path); err != nil {
+			return fmt.Errorf("no database at %s; check DND_DB_PATH", path)
+		}
 	}
 	db, err := character.OpenDB(ctx, path)
 	if err != nil {
@@ -70,6 +78,13 @@ func run(ctx context.Context, args []string) error {
 		return nil
 	case "list-users":
 		return listUsers(ctx, db)
+	case "backup":
+		snap, err := character.BackupDB(ctx, db, args[0], 7, time.Now())
+		if err != nil {
+			return err
+		}
+		fmt.Printf("backed up to %s\n", snap)
+		return nil
 	case "rename-user":
 		if err := character.RenameUser(ctx, db, args[0], args[1]); err != nil {
 			return err
