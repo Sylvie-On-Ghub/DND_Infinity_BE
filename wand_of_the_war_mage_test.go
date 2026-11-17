@@ -1,7 +1,7 @@
 package character
 
-// wand_of_the_war_mage_test.go - the +1/+2/+3 Wand of the War Mage: a bonus to spell attacks and the
-// spell save DC. The variants share a source, so carrying two applies only the higher one.
+// wand_of_the_war_mage_test.go - the +1/+2/+3 Wand of the War Mage: a bonus to spell attacks that
+// leaves the spell save DC alone. The variants share a source, so carrying two applies only the higher one.
 
 import "testing"
 
@@ -26,9 +26,9 @@ func TestWandOfTheWarMage(t *testing.T) {
 	}
 	check := func(name string, src SpellSourceView, bonus int) {
 		t.Helper()
-		if src.AttackBonus != plain.AttackBonus+bonus || src.SaveDC != plain.SaveDC+bonus {
-			t.Errorf("%s: attack %+d, DC %d; want %+d and %d",
-				name, src.AttackBonus, src.SaveDC, plain.AttackBonus+bonus, plain.SaveDC+bonus)
+		if src.AttackBonus != plain.AttackBonus+bonus || src.SaveDC != plain.SaveDC {
+			t.Errorf("%s: attack %+d, DC %d; want %+d and an unchanged %d",
+				name, src.AttackBonus, src.SaveDC, plain.AttackBonus+bonus, plain.SaveDC)
 		}
 	}
 
