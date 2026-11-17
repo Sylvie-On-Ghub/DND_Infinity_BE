@@ -18,5 +18,11 @@
 
 # Pi deploy script and the binaries built for it
 /scripts/deploy-pi.sh
+
+# Pi and Mac backup scripts (docs/restore-from-backup.md)
+/scripts/setup-pi-backup.sh
+/scripts/pi-backup/
+/scripts/pull-pi-backup.sh
+/scripts/install-mac-backup.sh
 /dndserver
 /dnd-admin
