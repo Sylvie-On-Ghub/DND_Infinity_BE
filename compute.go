@@ -30,8 +30,8 @@ import (
 // Extra target and warning code introduced here; add to the valid-target list in character.go
 // if you want them next to the others.
 const (
-	// A modifier with this target and Kind ModSet means "Jack of All Trades": untrained skills
-	// (and initiative) get half proficiency. Data-driven, so any feature can grant it.
+	// A modifier with this target and Kind ModSet means "Jack of All Trades": untrained skills get
+	// half proficiency. Initiative isn't a skill, so it doesn't. Data-driven, so any feature can grant it.
 	TargetJackOfAllTrades = "jack_of_all_trades"
 
 	WarnRolledHPMismatch WarningCode = "rolled_hp_mismatch" // RolledHP entries != class level
@@ -1348,9 +1348,6 @@ func Compute(c Character, lib Library, rules Ruleset) (Sheet, error) {
 	warnings = append(warnings, acWarnings...)
 	ac := acDetail.Total
 	init := k.apply(TargetInitiative, modOf[Dex])
-	if jack {
-		init += pb / 2
-	}
 
 	// Speeds: all from modifiers, so the race/feature must grant its base (e.g. speed.walk Add 30).
 	// While shaped the beast's speeds are the base, and the species' speed modifiers are already gone.

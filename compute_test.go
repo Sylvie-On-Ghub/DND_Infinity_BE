@@ -240,8 +240,8 @@ func TestJackOfAllTrades(t *testing.T) {
 	if got := sh.Skills["athletics"].Level; got != ProfHalf {
 		t.Errorf("untrained athletics level = %q, want %q", got, ProfHalf)
 	}
-	if sh.Initiative != 1 {
-		t.Errorf("initiative = %d, want 1", sh.Initiative)
+	if sh.Initiative != 0 {
+		t.Errorf("initiative = %d, want 0 (initiative isn't a skill check)", sh.Initiative)
 	}
 }
 

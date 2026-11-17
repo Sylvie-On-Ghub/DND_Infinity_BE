@@ -155,6 +155,9 @@ func TestBardJackOfAllTradesAndExpertise(t *testing.T) {
 	if got := two.Skills["athletics"].Bonus - one.Skills["athletics"].Bonus; got != 1 {
 		t.Errorf("Jack of All Trades adds %d to an untrained skill, want 1 (half of +2)", got)
 	}
+	if two.Initiative != one.Initiative {
+		t.Errorf("initiative = %d at level 2, want %d (Jack of All Trades only covers skill checks)", two.Initiative, one.Initiative)
+	}
 	if p, ok := findPending(two, "bard_expertise_2", "expertise"); !ok || p.Remaining != 2 {
 		t.Errorf("expertise pending = %+v (found %v)", p, ok)
 	}
