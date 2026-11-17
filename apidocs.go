@@ -366,6 +366,8 @@ var fieldDocs = map[string]string{
 	"EntryPatch.tags":                "Replaces the entry's tags. See InventoryItem.tags.",
 	"InventoryView.tags":             "The entry's tags. name and the numbers elsewhere on the sheet already include them.",
 	"InventoryItem.container":        "The id of the entry this one is stored in.",
+	"SpellGrant.ability":             "The casting ability for these spells. An item may leave it empty to cast with the wielder's class spellcasting (\"using your spell save DC\"), taking the ability with the best DC; features must set it.",
+	"SpellSourceView.ability":        "The ability these spells are cast with. For an item whose spells use the wielder's spellcasting, the class ability it settled on.",
 	"InventoryItem.proficient":       "Weapons: proficient with this one weapon regardless of weapon_profs, for example a Pact of the Blade weapon. Pair it with ability_override cha.",
 	"InventoryView.container":        "The id of the entry this one is stored in. Empty at the top level.",
 	"InventoryView.contents":         "Containers only: total weight of everything stored inside, including nested containers, whether or not it counts toward carried weight. Absent means 0. Compare with container_info.capacity.",
