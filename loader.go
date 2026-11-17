@@ -1153,7 +1153,7 @@ func (v *validator) item(it Item) {
 	}
 	v.modifiers(k, it.ID, "item", it.Modifiers)
 	v.actions(k, it.ID, "item", it.Actions)
-	v.spellGrant(k, it.ID, "item", it.Spells)
+	v.checkSpellGrant(k, it.ID, "item", it.Spells, true) // blank: cast with the wielder's spellcasting
 }
 
 func (v *validator) class(c Class) {

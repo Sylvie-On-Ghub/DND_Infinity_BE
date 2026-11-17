@@ -2665,15 +2665,26 @@ func computeSpells(c Character, g *gathered, lib Library, rules Ruleset, k *calc
 		sources = append(sources, src)
 	}
 
-	// Feature and item sources: innate casting, no slots, no upcasting.
+	// Feature and item sources: innate casting, no slots, no upcasting. An item that leaves its ability
+	// blank casts "using your spell save DC": the wielder's best class casting ability.
+	wielder := Ability("")
+	for _, ce := range g.casters {
+		if ce.level >= startLevel(ce.def) && ce.def.Ability != "" && (wielder == "" || modOf[ce.def.Ability] > modOf[wielder]) {
+			wielder = ce.def.Ability
+		}
+	}
 	for _, ge := range g.spellGrants {
-		cs := makeSource(ge.grant.Ability, ge.id)
+		ability := ge.grant.Ability
 		kind := SourceFeature
 		if strings.HasPrefix(ge.id, "item:") {
 			kind = SourceItem
+			if ability == "" {
+				ability = wielder
+			}
 		}
+		cs := makeSource(ability, ge.id)
 		src := SpellSourceView{
-			ID: ge.id, Name: ge.name, Kind: kind, Ability: ge.grant.Ability,
+			ID: ge.id, Name: ge.name, Kind: kind, Ability: ability,
 			SaveDC: cs.dc, AttackBonus: cs.attack, Prep: "innate",
 			CantripsAllowed: -1, SpellsAllowed: -1,
 			Cantrips: []SpellView{}, Spells: []SpellView{},

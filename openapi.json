@@ -3006,6 +3006,7 @@
       "SpellGrant": {
         "properties": {
           "ability": {
+            "description": "The casting ability for these spells. An item may leave it empty to cast with the wielder's class spellcasting (\"using your spell save DC\"), taking the ability with the best DC; features must set it.",
             "enum": [
               "str",
               "dex",
@@ -3048,6 +3049,7 @@
       "SpellSourceView": {
         "properties": {
           "ability": {
+            "description": "The ability these spells are cast with. For an item whose spells use the wielder's spellcasting, the class ability it settled on.",
             "enum": [
               "str",
               "dex",
